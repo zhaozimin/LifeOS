@@ -1,0 +1,14 @@
+{
+  "name": "LifeOS · 时间 × 金钱",
+  "short_name": "LifeOS",
+  "description": "本地优先的人生账本：时间 × 金钱",
+  "start_url": "/dashboard/",
+  "scope": "/dashboard/",
+  "display": "standalone",
+  "background_color": "#f7f2ea",
+  "theme_color": "#c96442",
+  "icons": [
+    { "src": "/dashboard/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/dashboard/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

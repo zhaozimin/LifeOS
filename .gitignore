@@ -1,0 +1,23 @@
+# Runtime data and credentials are local-only.
+server/runtime/config.json
+server/runtime/connection-info.txt
+# 这两份文件都是先写同目录 `.<name>.<pid>.tmp` 再 replace 的原子写入产物，
+# 中间态与正式文件内容完全相同：一份是 accessToken 明文，一份是带 ?token= 的面板地址。
+# 进程被 SIGKILL 或掉电时中间态会留在 runtime/ 里；只忽略正式文件名，
+# 等于「Token 不进 Git」这道铁律的第一道防线对着中间态大开。
+server/runtime/.config.json.*.tmp
+server/runtime/.connection-info.txt.*.tmp
+server/runtime/time/*
+!server/runtime/time/.gitkeep
+server/runtime/finance/*
+!server/runtime/finance/.gitkeep
+server/logs/
+# `server/web` is the committed, reviewable dashboard release artifact.  Runtime
+# state stays excluded above; do not hide a stale dashboard build from Git.
+__pycache__/
+*.py[cod]
+.DS_Store
+node_modules/
+dist/
+# 设计审查钩子的本地缓存，非项目内容；发布物扫描会因它拒绝打包。
+.impeccable/

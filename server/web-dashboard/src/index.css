@@ -1,0 +1,468 @@
+/**
+ * [INPUT]: 依赖 Tailwind CSS 4 与 ThemeProvider 动态写入的主题 token。
+ * [OUTPUT]: 对外提供 TimeOS 全局色彩、排版、焦点与弹层，并导入 UI 设计系统的时间轴样式。
+ * [POS]: web-dashboard 的全局视觉 token 真源；专项组件样式由对应设计系统文件维护。
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+@import "tailwindcss";
+@import "./components/ui/timeline.css";
+
+:root {
+  color-scheme: light;
+  --radius: 8px;
+
+  /* —— 主题特异 token，由 ThemeProvider 在运行时按 palette 覆盖 —— */
+  --display-letter-spacing: 0;
+  --display-font-weight: 600;
+
+  --background: #f7f2ea;
+  --foreground: #1f1f1d;
+  --card: #fbf8f1;
+  --card-foreground: #1f1f1d;
+  --popover: #fffdf7;
+  --popover-foreground: #1f1f1d;
+
+  --primary: #c96442;
+  --primary-foreground: #fffaf2;
+  --secondary: #eee7dc;
+  --secondary-foreground: #292825;
+  --muted: #ebe3d7;
+  --muted-foreground: #6f6a61;
+  --accent: #eadfd1;
+  --accent-foreground: #25231f;
+
+  --destructive: #a33f3f;
+  --destructive-foreground: #fff7f3;
+  --warning: #b17824;
+  --success: #477d62;
+
+  --border: #ddd2c3;
+  --input: #e5dbcf;
+  --ring: #c96442;
+
+  --sidebar: #fbf8f1;
+  --sidebar-foreground: #201f1d;
+  --sidebar-primary: #c96442;
+  --sidebar-primary-foreground: #fffaf2;
+  --sidebar-accent: #efe7db;
+  --sidebar-accent-foreground: #25231f;
+  --sidebar-border: #ddd2c3;
+
+  --brand-red: #e44f4f;
+  --brand-coral: #d97757;
+  --brand-sand: #ead6bf;
+  --brand-sage: #87b99b;
+  --brand-blue: #7f91d6;
+  --brand-violet: #9a81d3;
+  --brand-ink: #141413;
+
+  --chart-1: #7f91d6;
+  --chart-2: #c69a7d;
+  --chart-3: #87b99b;
+  --chart-4: #9a81d3;
+  --chart-5: #d97757;
+
+  --nature-core-src: #7f91d6;
+  --nature-support-src: #c69a7d;
+  --nature-recovery-src: #87b99b;
+  --nature-leisure-src: #9a81d3;
+  --nature-core-light: oklch(from var(--nature-core-src) 0.72 0.11 h);
+  --nature-support-light: oklch(from var(--nature-support-src) 0.72 0.10 h);
+  --nature-recovery-light: oklch(from var(--nature-recovery-src) 0.72 0.09 h);
+  --nature-leisure-light: oklch(from var(--nature-leisure-src) 0.72 0.10 h);
+  --nature-core-dark: oklch(from var(--nature-core-src) 0.70 0.09 h);
+  --nature-support-dark: oklch(from var(--nature-support-src) 0.70 0.08 h);
+  --nature-recovery-dark: oklch(from var(--nature-recovery-src) 0.70 0.07 h);
+  --nature-leisure-dark: oklch(from var(--nature-leisure-src) 0.70 0.08 h);
+  --nature-core: var(--nature-core-light);
+  --nature-support: var(--nature-support-light);
+  --nature-recovery: var(--nature-recovery-light);
+  --nature-leisure: var(--nature-leisure-light);
+
+  --font-serif: Baskerville, "Times New Roman", "Source Han Serif SC",
+    "Noto Serif SC", Georgia, serif;
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas,
+    monospace;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #0f1110;
+  --foreground: #e8e6df;
+  --card: #171a1a;
+  --card-foreground: #e8e6df;
+  --popover: #191c1c;
+  --popover-foreground: #e8e6df;
+
+  --primary: #d97757;
+  --primary-foreground: #17110d;
+  --secondary: #222625;
+  --secondary-foreground: #e8e6df;
+  --muted: #202423;
+  --muted-foreground: #9d9a91;
+  --accent: #262a28;
+  --accent-foreground: #f1eee7;
+
+  --destructive: #d17676;
+  --destructive-foreground: #1f1111;
+  --warning: #d5a65a;
+  --success: #87b99b;
+
+  --border: #2b302f;
+  --input: #252a29;
+  --ring: #d97757;
+
+  --sidebar: #151818;
+  --sidebar-foreground: #e8e6df;
+  --sidebar-primary: #d97757;
+  --sidebar-primary-foreground: #17110d;
+  --sidebar-accent: #222625;
+  --sidebar-accent-foreground: #f1eee7;
+  --sidebar-border: #303634;
+
+  --brand-coral: #d9977f;
+  --brand-sand: #d6bfa3;
+  --brand-sage: #8db79d;
+  --brand-blue: #8193d6;
+  --brand-violet: #9d89cf;
+
+  --chart-1: #8193d6;
+  --chart-2: #c69a7d;
+  --chart-3: #8db79d;
+  --chart-4: #9d89cf;
+  --chart-5: #d9977f;
+
+  --nature-core: var(--nature-core-dark);
+  --nature-support: var(--nature-support-dark);
+  --nature-recovery: var(--nature-recovery-dark);
+  --nature-leisure: var(--nature-leisure-dark);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-brand-red: var(--brand-red);
+  --color-brand-coral: var(--brand-coral);
+  --color-brand-sand: var(--brand-sand);
+  --color-brand-sage: var(--brand-sage);
+  --color-brand-blue: var(--brand-blue);
+  --color-brand-violet: var(--brand-violet);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-nature-core: var(--nature-core);
+  --color-nature-support: var(--nature-support);
+  --color-nature-recovery: var(--nature-recovery);
+  --color-nature-leisure: var(--nature-leisure);
+
+  --font-serif: var(--font-serif);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-2xl: 8px;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  html {
+    background: var(--background);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    /* 始终保留滚动条占位，避免在 Settings 各面板间切换时因滚动条出现/消失
+       导致页面横向抖动。现代浏览器（Chrome 94+/FF 97+/Safari 16+）支持。 */
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--foreground);
+    background:
+      linear-gradient(180deg, color-mix(in oklab, var(--background) 92%, var(--brand-sand)) 0%, var(--background) 260px),
+      var(--background);
+    font-feature-settings: "ss01", "cv01", "cv11";
+    overscroll-behavior-y: contain;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: inherit;
+  }
+
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+  }
+}
+
+.serif,
+.display {
+  font-family: var(--font-serif);
+  font-weight: var(--display-font-weight);
+  letter-spacing: var(--display-letter-spacing);
+}
+
+.brand-logo {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: var(--display-letter-spacing);
+}
+
+.text-display-lg {
+  font-family: var(--font-serif);
+  font-size: 38px;
+  font-weight: var(--display-font-weight);
+  line-height: 1.08;
+  letter-spacing: var(--display-letter-spacing);
+}
+
+.text-display-md {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: var(--display-font-weight);
+  line-height: 1.16;
+  letter-spacing: var(--display-letter-spacing);
+}
+
+.text-display-sm {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: var(--display-font-weight);
+  line-height: 1.24;
+  letter-spacing: var(--display-letter-spacing);
+}
+
+.text-title-lg {
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.text-title-md {
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.text-title-sm {
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.text-body-md {
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.text-body-sm {
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.text-caption {
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+
+.text-caption-uppercase {
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.text-mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.panel {
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--card) 92%, transparent);
+  border-radius: var(--radius);
+}
+
+.hairline-top {
+  border-top: 1px solid var(--border);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 56px 24px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--muted-foreground) 24%, transparent);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--muted-foreground) 38%, transparent);
+  background-clip: padding-box;
+}
+
+*:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--ring) 70%, transparent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Form controls render their focus indicator via the styled wrapper
+   (TextInput / Select use ring-2 ring-inset). Suppress the global
+   *:focus-visible outline here so the two don't double up — the
+   global outline + offset would otherwise visually extend past the
+   wrapper border (e.g. on 阈值 / 当前余额 number inputs in account
+   cards). */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--primary) 28%, transparent);
+  color: var(--foreground);
+}
+
+@supports (padding: env(safe-area-inset-top)) {
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@media (max-width: 760px) {
+  .text-display-lg {
+    font-size: 30px;
+  }
+}
+
+@media print {
+  html.dark {
+    background: #fff !important;
+    color: #000 !important;
+  }
+}
+
+/* ============================================================
+   弹层入场动效：全站统一语言
+   遮罩淡入 / 底部抽屉上滑 / 居中弹窗轻弹
+   退场随组件卸载（保持实现简单）；尊重系统"减弱动态效果"
+   ============================================================ */
+@keyframes overlay-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes drawer-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes modal-pop-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-overlay-in {
+  animation: overlay-fade-in 200ms ease-out;
+}
+
+.animate-drawer-up {
+  animation: drawer-slide-up 300ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.animate-modal-in {
+  animation: modal-pop-in 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-overlay-in,
+  .animate-drawer-up,
+  .animate-modal-in {
+    animation: none;
+  }
+}

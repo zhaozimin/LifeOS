@@ -1,0 +1,47 @@
+{
+  "name": "lifeos-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build && node scripts/mirror-dashboard-index.mjs",
+    "test": "npm run test:dates && npm run test:timeline && npm run test:timeline-interaction && npm run test:timeline-callouts && npm run test:frontend-state && npm run test:fin-pure && npm run test:components",
+    "test:dates": "node --test test_dates.mjs",
+    "test:timeline": "node --test test_timeline.mjs",
+    "test:timeline-interaction": "node --test test_timeline_interaction.mjs",
+    "test:timeline-callouts": "node --test test_timeline_callouts.mjs",
+    "test:frontend-state": "node --test test_frontend_state.mjs",
+    "test:fin-pure": "node --test test_fin_pure.mjs",
+    "preview": "vite preview",
+    "test:components": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "clsx": "^2.1.1",
+    "echarts": "^6.1.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^0.471.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-router": "8.3.0",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@testing-library/jest-dom": "^6.10.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.12.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "happy-dom": "^20.11.1",
+    "tailwindcss": "^4.0.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.10",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,8 @@
+# LifeOS 的唯一 pip 依赖，只服务财务 XLSX / 税务报表导出。
+#
+# 它刻意不是启动依赖：export_xlsx 延迟导入，缺库时降级为 503
+# export_dependency_missing，时间域与财务域其余功能照常。
+# 声明在这里是为了让 CI 与部署有机器可读的真源——此前只有 CLAUDE.md
+# 一句自然语言写着「唯一 pip 依赖 openpyxl」，CI 于是从不安装它，
+# 导出测试无条件断言 200，四条矩阵腿全败，release job 因 needs 永不执行。
+openpyxl>=3.1,<4

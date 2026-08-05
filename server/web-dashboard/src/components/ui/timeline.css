@@ -1,0 +1,779 @@
+/**
+ * [INPUT]: 依赖 index.css 的主题语义 token，以及 TimelineCanvas 注入的分钟、网格、高度、颜色和长按时长变量。
+ * [OUTPUT]: 对外提供日/周时间轴、左侧刻度与分布轨、五列细节栏与引导线、缩放控件、选中/长按/移动/缩放手柄的唯一视觉实现。
+ * [POS]: components/ui 的时间画布样式真源；领域组件只注入几何、内容与语义色，不得在自身拼装时间轴外观。
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
+:root {
+  --timeline-axis-width: 54px;
+  --timeline-distribution-width: 76px;
+  --timeline-grid-size: 48px;
+  --timeline-day-height: 1152px;
+  --timeline-track-inset: 12px;
+  --timeline-detail-inset: 8px;
+  --timeline-event-gap: 3px;
+  --timeline-event-radius: 4px;
+  --timeline-resize-hit-size: 18px;
+  --timeline-grid-color: var(--border);
+  --timeline-label-color: var(--muted-foreground);
+  --timeline-now-color: var(--destructive);
+  --timeline-long-press-duration: 380ms;
+  --timeline-callout-gutter: 56px;
+  --timeline-callout-lane-min: 220px;
+  --timeline-callout-label-height: 30px;
+  --timeline-callout-label-gap: 6px;
+  --timeline-motion-fast: 120ms;
+  --timeline-drag-elevation: 0 12px 28px color-mix(in oklab, var(--foreground) 20%, transparent);
+}
+
+@keyframes timeos-breathe {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes timeos-long-press-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.timeos-breathe {
+  animation: timeos-breathe 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeos-breathe {
+    animation: none;
+    opacity: 0.82;
+  }
+}
+
+/* —— 缩放控制 —— */
+.timeos-timeline-toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--card) 88%, transparent);
+  flex: none;
+}
+
+.timeos-timeline-toolbar__hint {
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.timeos-timeline-zoom {
+  display: inline-grid;
+  grid-template-columns: auto 30px minmax(112px, 180px) 30px minmax(58px, auto);
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--foreground);
+}
+
+.timeos-timeline-zoom__title,
+.timeos-timeline-zoom__value {
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.timeos-timeline-zoom__value {
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.timeos-timeline-zoom__step {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--foreground);
+  background: color-mix(in oklab, var(--card) 90%, transparent);
+  transition:
+    border-color var(--timeline-motion-fast) ease,
+    background var(--timeline-motion-fast) ease;
+}
+
+.timeos-timeline-zoom__step:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--ring) 50%, var(--border));
+  background: var(--accent);
+}
+
+.timeos-timeline-zoom__step:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.timeos-timeline-zoom__range {
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: ew-resize;
+}
+
+.timeos-timeline-zoom__range:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* —— 日画布：时间 / 分布 / 具体事项 —— */
+.timeos-day-head,
+.timeos-day-grid {
+  display: grid;
+  grid-template-columns:
+    var(--timeline-axis-width)
+    var(--timeline-distribution-width)
+    minmax(0, 1fr);
+  min-width: 0;
+}
+
+.timeos-day-head[data-callouts="on"],
+.timeos-day-grid[data-callouts="on"] {
+  grid-template-columns:
+    var(--timeline-axis-width)
+    var(--timeline-distribution-width)
+    minmax(0, 1fr)
+    var(--timeline-callout-gutter)
+    minmax(var(--timeline-callout-lane-min), 1fr);
+}
+
+.timeos-day-view {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.timeos-day-head {
+  align-items: center;
+  border-bottom: 1px solid var(--timeline-grid-color);
+}
+
+.timeos-day-head > span {
+  padding: 9px 10px;
+}
+
+.timeos-day-viewport {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.timeos-day-view[data-zoom="fit"] .timeos-day-viewport {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+.timeos-day-grid {
+  height: var(--timeline-day-height);
+}
+
+.timeos-time-axis,
+.timeos-activity-lane,
+.timeos-detail-lanes,
+.timeos-week-day {
+  position: relative;
+  background-image:
+    linear-gradient(to bottom, var(--timeline-grid-color) 1px, transparent 1px);
+  background-size: 100% var(--timeline-grid-size);
+}
+
+.timeos-time-axis {
+  border-right: 1px solid var(--timeline-grid-color);
+  background-image: none;
+}
+
+.timeos-hour-label {
+  position: absolute;
+  right: 8px;
+  transform: translateY(-50%);
+  color: var(--timeline-label-color);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.timeos-hour-label:first-child {
+  transform: none;
+}
+
+.timeos-hour-label:last-child {
+  transform: translateY(-100%);
+}
+
+.timeos-activity-lane {
+  border-right: 1px solid var(--timeline-grid-color);
+}
+
+.timeos-detail-lanes {
+  min-width: 0;
+}
+
+.timeos-callout-lines {
+  grid-column: 4;
+  width: var(--timeline-callout-gutter);
+  overflow: visible;
+  pointer-events: none;
+}
+
+.timeos-callout-lines [data-highlighted="true"] {
+  opacity: 1;
+  stroke-width: 1.8;
+}
+
+.timeos-callout-lane {
+  position: relative;
+  grid-column: 5;
+  min-width: 0;
+  border-left: 1px solid color-mix(in oklab, var(--border) 62%, transparent);
+}
+
+.timeos-callout {
+  position: absolute;
+  right: 8px;
+  left: 8px;
+  display: flex;
+  height: var(--timeline-callout-label-height);
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 9px;
+  color: var(--foreground);
+  background: var(--card);
+  font-size: 11.5px;
+  text-align: left;
+  transition:
+    border-color var(--timeline-motion-fast) ease,
+    background var(--timeline-motion-fast) ease;
+}
+
+.timeos-callout > i {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 2px;
+  background: var(--timeline-color);
+}
+
+.timeos-callout > b {
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeos-callout > em,
+.timeos-callout > u,
+.timeos-callout > span {
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  font-style: normal;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.timeos-callout > u {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  opacity: 0.82;
+  text-overflow: ellipsis;
+}
+
+.timeos-callout > span {
+  margin-left: auto;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeos-callout--gap {
+  border-style: dashed;
+  background: transparent;
+}
+
+.timeos-callout--gap > i {
+  border: 1px dashed var(--muted-foreground);
+  background: transparent;
+}
+
+.timeos-callout:hover,
+.timeos-callout:focus-visible,
+.timeos-callout[data-highlighted="true"] {
+  border-color: var(--timeline-color, var(--ring));
+  background: color-mix(in oklab, var(--timeline-color, var(--ring)) 13%, var(--card));
+}
+
+.timeos-detail-lanes > .timeos-timeline-event--day {
+  right: var(--timeline-detail-inset);
+  left: var(--timeline-detail-inset);
+}
+
+/* —— 分布轨：旧选择器保留给周边组件渐进迁移 —— */
+.timeos-distribution-block,
+.timeos-activity-block,
+.timeos-gap-block {
+  position: absolute;
+  left: var(--timeline-track-inset);
+  right: var(--timeline-track-inset);
+  min-height: 1px;
+  border-radius: 0;
+}
+
+.timeos-distribution-block,
+.timeos-activity-block {
+  background: var(--timeline-color);
+}
+
+.timeos-distribution-block--gap,
+.timeos-gap-block {
+  border: 1px dashed color-mix(in oklab, var(--muted-foreground) 34%, transparent);
+  background: color-mix(in oklab, var(--muted) 34%, transparent);
+}
+
+.timeos-distribution-block__action {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.timeos-distribution-block:hover,
+.timeos-activity-block:hover {
+  filter: brightness(1.06);
+}
+
+.timeos-distribution-block--gap:hover,
+.timeos-gap-block:hover {
+  background: color-mix(in oklab, var(--primary) 10%, transparent);
+}
+
+.timeos-activity-block:focus-visible,
+.timeos-gap-block:focus-visible,
+.timeos-distribution-block__action:focus-visible {
+  border-radius: 0;
+}
+
+/* —— 事项块：容器只管几何，内部 button 管激活，手柄与 button 同级 —— */
+.timeos-timeline-event {
+  container-name: timeos-event;
+  container-type: size;
+  position: absolute;
+  min-width: 0;
+  border-left: 3px solid var(--timeline-color);
+  border-radius: var(--timeline-event-radius);
+  background: color-mix(in oklab, var(--timeline-color) 15%, var(--card));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--timeline-color) 16%, var(--border));
+  transition:
+    background var(--timeline-motion-fast) ease,
+    box-shadow var(--timeline-motion-fast) ease,
+    opacity var(--timeline-motion-fast) ease;
+}
+
+.timeos-timeline-event__action,
+button.timeos-timeline-event {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-width: 0;
+  overflow: hidden;
+  padding: 7px 10px;
+  text-align: left;
+}
+
+.timeos-timeline-event__action {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: inherit;
+  color: inherit;
+  background: transparent;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+button.timeos-timeline-event {
+  overflow: hidden;
+}
+
+.timeos-timeline-event:hover {
+  background: color-mix(in oklab, var(--timeline-color) 21%, var(--card));
+}
+
+.timeos-event-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.timeos-event-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeos-event-heading > span {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeos-event-meta,
+.timeos-event-note {
+  display: none;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.timeos-event-meta {
+  margin-top: 3px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeos-event-note {
+  margin-top: 6px;
+  color: var(--foreground);
+  opacity: 0.82;
+}
+
+@container timeos-event (min-height: 50px) {
+  .timeos-event-meta {
+    display: block;
+  }
+}
+
+@container timeos-event (min-height: 88px) and (min-width: 210px) {
+  .timeos-event-note {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+
+/* —— 统一手势状态 —— */
+.timeos-distribution-block[data-selected="true"],
+.timeos-timeline-event[data-selected="true"] {
+  z-index: 12;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.timeos-distribution-block[data-can-move="true"] > .timeos-distribution-block__action,
+.timeos-timeline-event[data-can-move="true"] > .timeos-timeline-event__action {
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.timeos-distribution-block[data-gesture="pressing"] > .timeos-distribution-block__action,
+.timeos-timeline-event[data-gesture="pressing"] > .timeos-timeline-event__action {
+  cursor: wait;
+}
+
+.timeos-distribution-block[data-gesture="moving"],
+.timeos-timeline-event[data-gesture="moving"] {
+  z-index: 20;
+  opacity: 0.92;
+  box-shadow: var(--timeline-drag-elevation);
+}
+
+.timeos-distribution-block[data-gesture="moving"] > .timeos-distribution-block__action,
+.timeos-timeline-event[data-gesture="moving"] > .timeos-timeline-event__action {
+  cursor: grabbing;
+  touch-action: none;
+}
+
+.timeos-distribution-block[data-gesture="resizing"],
+.timeos-timeline-event[data-gesture="resizing"] {
+  z-index: 21;
+  outline-color: var(--primary);
+}
+
+.timeos-long-press-indicator {
+  position: absolute;
+  z-index: 24;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: var(--primary);
+  pointer-events: none;
+}
+
+[data-gesture="pressing"] > .timeos-long-press-indicator {
+  animation:
+    timeos-long-press-progress var(--timeline-long-press-duration) linear forwards;
+}
+
+/* —— 上下边缘手柄 —— */
+.timeos-resize-handles {
+  position: absolute;
+  z-index: 26;
+  inset: 0;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--timeline-motion-fast) ease;
+}
+
+[data-selected="true"] > .timeos-resize-handles {
+  visibility: visible;
+  opacity: 1;
+}
+
+.timeos-resize-handle {
+  position: absolute;
+  right: -2px;
+  left: -2px;
+  height: var(--timeline-resize-hit-size);
+  border: 0;
+  padding: 0;
+  color: var(--foreground);
+  background: transparent;
+  cursor: ns-resize;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.timeos-resize-handle[data-resize-edge="start"] {
+  top: calc(var(--timeline-resize-hit-size) / -2);
+}
+
+.timeos-resize-handle[data-resize-edge="end"] {
+  bottom: calc(var(--timeline-resize-hit-size) / -2);
+}
+
+@container timeos-event (max-height: 23px) {
+  .timeos-resize-handle[data-resize-edge="start"] {
+    right: 50%;
+    left: -2px;
+  }
+
+  .timeos-resize-handle[data-resize-edge="end"] {
+    right: -2px;
+    left: 50%;
+  }
+}
+
+.timeos-resize-handle__line {
+  position: absolute;
+  top: calc(50% - 1px);
+  right: 5px;
+  left: 5px;
+  height: 2px;
+  background: currentColor;
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--card) 75%, transparent);
+}
+
+.timeos-resize-handle__label {
+  position: absolute;
+  right: 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 5px;
+  color: var(--foreground);
+  font: 600 10.5px/1.2 var(--font-mono);
+  white-space: nowrap;
+  background: var(--popover);
+  box-shadow: 0 3px 10px color-mix(in oklab, var(--foreground) 12%, transparent);
+  pointer-events: none;
+}
+
+.timeos-resize-handle[data-resize-edge="start"] .timeos-resize-handle__label {
+  bottom: calc(50% + 4px);
+}
+
+.timeos-resize-handle[data-resize-edge="end"] .timeos-resize-handle__label {
+  top: calc(50% + 4px);
+}
+
+/* —— 当前时刻 —— */
+.timeos-now-line {
+  position: absolute;
+  z-index: 8;
+  right: 0;
+  left: 0;
+  border-top: 1px solid var(--timeline-now-color);
+  pointer-events: none;
+}
+
+.timeos-now-line::before {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--timeline-now-color);
+  content: "";
+}
+
+/* —— 周视图保持既有契约 —— */
+.timeos-week-frame {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.timeos-week-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.timeos-week-frame[data-zoom="fit"] .timeos-week-scroll {
+  overflow-y: hidden;
+}
+
+.timeos-week-view {
+  min-width: 1040px;
+}
+
+.timeos-week-head,
+.timeos-week-grid {
+  display: grid;
+  grid-template-columns: 50px repeat(7, minmax(0, 1fr));
+}
+
+.timeos-week-head {
+  border-bottom: 1px solid var(--border);
+}
+
+.timeos-week-head > div {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  padding: 8px 3px;
+  border-right: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.timeos-week-head > div strong {
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.timeos-week-head > div.is-today {
+  background: color-mix(in oklab, var(--primary) 9%, transparent);
+}
+
+.timeos-week-day {
+  min-width: 0;
+  border-right: 1px solid var(--border);
+}
+
+.timeos-week-day.is-today {
+  background-color: color-mix(in oklab, var(--primary) 3%, transparent);
+}
+
+.timeos-timeline-event--week {
+  border-left-width: 2px;
+  border-radius: 3px;
+}
+
+.timeos-timeline-event--week > .timeos-timeline-event__action,
+button.timeos-timeline-event--week {
+  padding: 5px 6px;
+}
+
+@container timeos-event (max-height: 23px) {
+  .timeos-timeline-event--week .timeos-event-heading {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --timeline-axis-width: 44px;
+    --timeline-distribution-width: 38px;
+    --timeline-track-inset: 8px;
+  }
+
+  .timeos-timeline-zoom {
+    grid-template-columns: 30px minmax(90px, 1fr) 30px auto;
+    width: 100%;
+  }
+
+  .timeos-timeline-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .timeos-timeline-toolbar__hint {
+    white-space: normal;
+  }
+
+  .timeos-timeline-zoom__title {
+    display: none;
+  }
+
+  .timeos-day-head > span {
+    padding-inline: 6px;
+  }
+
+  .timeos-hour-label {
+    right: 5px;
+    font-size: 10px;
+  }
+
+  .timeos-timeline-event__action,
+  button.timeos-timeline-event {
+    padding-inline: 7px;
+  }
+
+  @container timeos-event (min-height: 88px) and (min-width: 150px) {
+    .timeos-event-note {
+      display: -webkit-box;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeos-timeline-event,
+  .timeos-resize-handles,
+  .timeos-timeline-zoom__step {
+    transition: none;
+  }
+}

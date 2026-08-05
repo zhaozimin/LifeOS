@@ -1,0 +1,10 @@
+runtime/config.json
+runtime/connection-info.txt
+runtime/time/*
+!runtime/time/.gitkeep
+runtime/finance/*
+!runtime/finance/.gitkeep
+# Dashboard production assets are intentionally tracked from the repository root.
+# 原子写入的中间态同样含明文 Token，与根 .gitignore 保持同一道防线。
+runtime/.config.json.*.tmp
+runtime/.connection-info.txt.*.tmp

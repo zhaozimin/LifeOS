@@ -1,0 +1,4 @@
+interface:
+  display_name: "LifeOS 人生记录"
+  short_description: "将时间与财务记录安全写入同一套本地 LifeOS"
+  default_prompt: "使用 $lifeos 安全部署 LifeOS，或把我刚说的时间与收支分别记录到账本。"
