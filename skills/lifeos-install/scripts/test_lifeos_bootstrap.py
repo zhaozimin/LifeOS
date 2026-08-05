@@ -27,7 +27,13 @@ class NetworkBoundaryTests(unittest.TestCase):
     """下载地址是这条链上唯一的外部输入，白名单必须是硬判据而不是提示。"""
 
     def test_only_official_github_hosts_over_https_are_reachable(self) -> None:
-        for url in ("https://api.github.com/repos/x/y", "https://objects.githubusercontent.com/a", "https://github.com/x/y"):
+        for url in (
+            "https://api.github.com/repos/x/y",
+            "https://github.com/x/y",
+            # Release 附件 302 的真实落点（2026-08 实测）；objects 域是前代，保留兼容
+            "https://release-assets.githubusercontent.com/github-production-release-asset/1?sig=x",
+            "https://objects.githubusercontent.com/a",
+        ):
             with self.subTest(url=url):
                 self.assertEqual(boot.assert_allowed_url(url), url)
         for url in (

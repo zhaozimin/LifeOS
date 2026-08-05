@@ -31,9 +31,16 @@ from typing import Any, Iterable, Sequence
 REPOSITORY = "zhaozimin/LifeOS"
 API_ROOT = "https://api.github.com"
 RELEASES_PAGE = f"https://github.com/{REPOSITORY}/releases"
-# 只认这三个域。Release 附件的 302 会落到 objects.githubusercontent.com，除此之外的任何跳转
-# 都按劫持处理直接拒绝——「先跟过去再校验 sha256」不成立，因为校验和也是同一次会话给的。
-ALLOWED_HOSTS = ("api.github.com", "objects.githubusercontent.com", "github.com")
+# 只认这几个域，除此之外的任何跳转都按劫持处理直接拒绝——「先跟过去再校验 sha256」
+# 不成立，因为校验和也是同一次会话给的。Release 附件的 302 实测落在
+# release-assets.githubusercontent.com（2026-08 对 v1.0.0 真实下载验证），
+# objects.githubusercontent.com 是它的前代资产域，保留以兼容 GitHub 的灰度回切。
+ALLOWED_HOSTS = (
+    "api.github.com",
+    "github.com",
+    "release-assets.githubusercontent.com",
+    "objects.githubusercontent.com",
+)
 DEFAULT_INSTALL_PATH = Path("~/Library/Application Support/LifeOS/app")
 POINTER_RELATIVE = Path(".config/lifeos/install.json")
 # 宿主是一张表而不是一串 if：判据永远是「这个目录在不在」，新 Agent 出现时只加一行。
