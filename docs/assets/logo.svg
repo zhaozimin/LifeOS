@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="LifeOS">
+  <title>LifeOS</title>
+  <rect width="512" height="512" rx="112" fill="#c96442"/>
+  <!-- 时间这一半：表盘与指针 -->
+  <circle cx="228" cy="228" r="132" fill="none" stroke="#fffaf2" stroke-width="34"/>
+  <path d="M228 152v76l54 32" fill="none" stroke="#fffaf2" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 金钱这一半：角标压在表盘右下，两半共用一个入口而各自独立 -->
+  <circle cx="376" cy="376" r="112" fill="#c96442"/>
+  <circle cx="376" cy="376" r="88" fill="#fffaf2"/>
+  <path d="M341 331l35 40 35-40M376 371v58M347 385h58M347 407h58" fill="none" stroke="#c96442" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

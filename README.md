@@ -1,65 +1,84 @@
-# LifeOS
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
+    <img alt="LifeOS — talk, and your life is logged" src="docs/assets/banner-light.svg" width="720">
+  </picture>
+</p>
 
-**会说话，就会记录人生。**
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-c96442"></a>
+  <img alt="Platform: macOS" src="https://img.shields.io/badge/platform-macOS-c96442">
+  <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9%2B-c96442">
+  <img alt="No cloud" src="https://img.shields.io/badge/cloud-none-3ED395">
+  <img alt="263 tests" src="https://img.shields.io/badge/tests-263%20passing-3ED395">
+</p>
 
-LifeOS 把你的**时间**和**金钱**记在同一个地方。你不用打开 App，也不用填表格——你对 AI 说一句人话，它替你记好：
+<p align="center">
+  <b>English</b> · <a href="README.zh-CN.md">简体中文</a> · <a href="docs/安装指南.md">安装指南</a>
+</p>
 
-> 「我从九点开始写方案，刚写完。」
+---
+
+**LifeOS logs where your time goes and where your money goes — by listening to you talk.**
+
+No app to open. No form to fill. You say one ordinary sentence to your AI assistant, and it writes the record for you:
+
+> 🗣 *"I started writing the proposal at nine, just finished."*
 >
-> 「中午吃饭花了 38 块，微信支付。」
+> 🗣 *"Lunch was 38 yuan, paid with WeChat."*
 
-记完之后，在自己电脑上打开一个网页，就能看到今天的时间去了哪里、这个月的钱去了哪里。
+Then you open a page on your own machine and see the day laid out — which hours went where, which yuan went where.
 
----
+> **Note** — LifeOS ships a Chinese-language interface and assistant protocol; it is built for Chinese-speaking users. This README is in English so the design is legible to everyone. The user-facing version is [简体中文](README.zh-CN.md).
 
-## 它能做什么
+## How it works
 
-**时间这一半**
+```mermaid
+flowchart LR
+    U["🗣 You say<br/>one ordinary sentence"] --> A["Your AI client<br/>Claude Code · Codex · …"]
+    A -->|loads the zzm-lifeos skill| S["timectl.py · finctl.py<br/>correctness lives in scripts,<br/>not in prompts"]
+    S -->|"HTTP · 127.0.0.1 only<br/>single bearer token"| P["LifeOS<br/>one process, port 59418"]
+    P --> T[("time<br/>.sqlite3")]
+    P --> F[("finance<br/>.sqlite3")]
+    P --> W["Dashboard<br/>in your browser"]
 
-- 记录每一段活动：什么时候开始、什么时候结束、在做什么、属于哪个项目
-- 一天的时间轴：一眼看出哪几段记了、哪几段是空白
-- 统计：按分类、按项目看时间都花在了哪
+    style U fill:#c96442,stroke:#c96442,color:#fffaf2
+    style P fill:#c96442,stroke:#c96442,color:#fffaf2
+    style T fill:#fffaf2,stroke:#c96442,color:#1c1917
+    style F fill:#fffaf2,stroke:#c96442,color:#1c1917
+```
 
-**金钱这一半**
+The assistant only decides **what you meant**. Every judgement that has to be right — date arithmetic, money direction, account lookup, the receipt you get back — is made by deterministic scripts and by the server, never by a prompt. A write that fails must be reported as failed.
 
-- 记录每一笔收入、支出、转账、报销
-- 看账户余额、月度收支、资金从哪来到哪去
-- 给一笔账挂上票据照片
-- 导出 Excel 报表（另有一份简易税务报表）
+**Two ledgers, one door.** Time and money share the entry point and nothing else. They live in two separate SQLite files that are never attached, never joined, never in one transaction — each with its own lock, its own write-ahead log, its own audit snapshots.
 
-**两边共用一个入口，账本永远分开。** 时间和金钱存在两个各自独立的数据库文件里，任何时候都不会混进同一个文件。
+## What it records
 
-## 谁适合用
+<table>
+<tr><th width="50%">⏱ Time</th><th width="50%">💴 Money</th></tr>
+<tr valign="top"><td>
 
-- 想知道自己的时间到底花在哪里的人
-- 想记账，但受不了每天打开 App 填表的人
-- 不愿意把作息和消费记录交给别人服务器的人
+- Every stretch of activity: start, end, what you were doing, which project
+- A timeline of your day — see at a glance which hours are logged and which are blank
+- Statistics by category and by project
 
-## 隐私：数据只在你自己的电脑上
+</td><td>
 
-这不是宣传语，是这套软件的物理形态：
+- Income, expense, transfer, reimbursement
+- Account balances, monthly totals, where money came from and went
+- Attach a receipt photo to any entry
+- Export to Excel (plus a simplified tax sheet)
 
-- **没有云端。** 没有注册、没有账号、没有要登录的服务器。
-- 程序只监听 `127.0.0.1`，意思是**只有你这台电脑自己连得上**。同一个 Wi-Fi 下的别人也访问不到。
-- 两本账本就是你硬盘上的两个文件，路径你看得见、拷得走、删得掉。
-- 访问密钥只写在你电脑上一个权限 0600 的文件里（除了你本人，别的账号读不到）。
-- 想在手机上看，需要你自己额外配一层 Tailscale（见《[安装指南](docs/安装指南.md)》最后一节）。不配就永远只有本机能看。
+</td></tr>
+</table>
 
-## 系统要求
+## Install
 
-- macOS
-- Python 3.9 或更新（系统自带的通常就够，安装过程里会帮你确认）
-- **不需要装 Node.js**，界面是打包好的
+The full walkthrough — every step, what you should see, and what to do when you don't — is in the [安装指南](docs/安装指南.md). Three ways in:
 
----
+### 1 · Let your AI install it (recommended)
 
-## 安装：三条路，任选一条
-
-完整步骤、每一步「你会看到什么」和「看不到该怎么办」，都写在 **《[安装指南](docs/安装指南.md)》** 里。这里只给入口。
-
-### 路径一（推荐）：让 AI 帮你装
-
-如果你在用 Claude Code、Codex 这类能执行命令的 AI，**把下面这段整个复制**，粘贴给它，然后等它干完：
+If you use an AI client that can run commands, paste this to it and wait:
 
 ```text
 请帮我在这台 Mac 上安装 LifeOS，严格按下面的步骤做，不要跳步、不要自己发挥：
@@ -67,7 +86,7 @@ LifeOS 把你的**时间**和**金钱**记在同一个地方。你不用打开 A
 1. 打开 https://github.com/zhaozimin/LifeOS/releases/latest ，
    下载名字形如 lifeos-install-skill-1.1.0.zip 的附件，以及它旁边同名的 .sha256 文件。
 2. 用 shasum -a 256 -c 校验这个 zip。校验不通过就立刻停下来告诉我，不要继续。
-3. 解压，把里面的 lifeos-install 整个文件夹放进你自己的 skills 目录
+3. 解压，把里面的 zzm-lifeos-install 整个文件夹放进你自己的 skills 目录
    （Claude Code 通常是 ~/.claude/skills/，别的 Agent 用你自己的那个）。
 4. 执行这一条命令，让脚本自己完成剩下的全部安装：
    python3 ~/.claude/skills/zzm-lifeos-install/scripts/lifeos_bootstrap.py install
@@ -75,43 +94,87 @@ LifeOS 把你的**时间**和**金钱**记在同一个地方。你不用打开 A
 6. 中途任何一步报错，把报错原文发给我，不要自己猜着改。
 ```
 
-装好以后，你以后只要对它说「帮我记一下……」就行了。
+The installer checks the download's sha256 before anything touches your disk, refuses to overwrite an installation it cannot identify as its own, and hands you the dashboard address exactly once.
 
-### 路径二：自己下载安装包
+### 2 · Download the release
 
-到 [Releases 页面](https://github.com/zhaozimin/LifeOS/releases/latest) 下载 `lifeos-1.1.0.zip`，解压，在终端里跑一条安装命令。全过程见《[安装指南](docs/安装指南.md)》路径二。
+Grab `lifeos-1.1.0.zip` from the [latest release](https://github.com/zhaozimin/LifeOS/releases/latest), verify it, unpack it, run one command. See [安装指南](docs/安装指南.md) → 路径二.
 
-### 路径三：从源码装
+### 3 · From source
 
-会用 `git clone` 的人走这条。见《[安装指南](docs/安装指南.md)》路径三。
+```bash
+git clone https://github.com/zhaozimin/LifeOS.git
+```
 
----
+See [安装指南](docs/安装指南.md) → 路径三. **No Node.js required** — the dashboard ships prebuilt.
 
-## 装完之后
+## Using it
 
-| 想干的事 | 去哪看 |
+Once it is installed you never type a command again. You just talk.
+
+| You say | What lands in the ledger |
 | --- | --- |
-| 怎么打开面板、密钥在哪、怎么开机自启 | 《[安装指南](docs/安装指南.md)》 |
-| 怎么备份、换电脑怎么恢复 | 《[备份与恢复](docs/备份与恢复.md)》 |
-| 这个版本还有哪些做不到的事 | 《[已知问题](docs/已知问题.md)》 |
+| 「我开始写代码了」 | Opens a time segment, now; category inferred from your habits |
+| 「刚才开会开了一个半小时」 | A closed 90-minute segment, backfilled |
+| 「接下来去健身」 | Closes the current segment and opens the next in one transaction — no one-minute gap |
+| 「打车花了 25」 | An expense of ¥25; account and category inferred |
+| 「工资到账了 12000」 | Income of ¥12000 |
+| 「还了信用卡 3000」 | A transfer, not an income — the credit-card guardrail is structural |
+| 「昨天下午其实是在改 bug，帮我改过来」 | Corrects the existing record, keeping a full before/after version chain |
+| 「我这周都干了啥」 | Reads your week back to you |
+| 「这个月花了多少」 | Reads the month back to you |
 
-**请先读一遍《[备份与恢复](docs/备份与恢复.md)》。** 这个版本没有一键恢复，备份要你自己动手，而且拷错文件会丢数据。
+Every write comes back with a one-line receipt you can eyeball. Time lines never carry a `¥`; money lines always do. When one sentence contains both — *"just finished lunch, 45 yuan"* — it is split into two separate writes and you see both receipts.
 
----
+**The assistant asks before it invents.** It never silently creates a category, project or account that doesn't exist: the server rejects unknown master data outright and sends the assistant back to you first.
 
-## 许可与免责
+## Privacy is the architecture, not a promise
 
-**许可**：MIT License（见仓库根 [LICENSE](LICENSE)）。可以自由使用、修改、再分发，但需保留版权与许可声明。
+```mermaid
+flowchart TB
+    subgraph MACHINE ["🖥 Your Mac — nothing leaves it"]
+        direction LR
+        P["LifeOS process<br/>binds 127.0.0.1 only"] --- L[("Two SQLite files<br/>you can see, copy, delete")]
+        P --- K["Access key<br/>chmod 0600"]
+    end
+    X["☁️ Cloud"]:::gone
+    MACHINE -.->|"no account · no sign-up · no telemetry"| X
+    classDef gone fill:transparent,stroke:#bbb,color:#999,stroke-dasharray: 5 5
+    style MACHINE fill:transparent,stroke:#c96442,stroke-width:2px
+    style P fill:#c96442,stroke:#c96442,color:#fffaf2
+```
 
-**免责**：
+- **No cloud, no account, no telemetry.** There is no server to sign in to.
+- The process binds `127.0.0.1` — **only this machine can reach it**, not even others on your Wi-Fi.
+- Both ledgers are plain files on your disk. You can see the path, copy them, delete them.
+- The access key lives in one `0600` file; no other account on the machine can read it.
+- Want it on your phone? You add a Tailscale layer yourself ([安装指南](docs/安装指南.md), last section). Without that it stays local, permanently.
+- It records **only when you speak to it**. It does not read your screen, does not sample system activity, does not watch you in the background.
 
-- LifeOS 按现状提供，作者不对它做任何担保，也不对使用它造成的任何损失负责。
-- 它是一个**记录工具**，不是财务顾问。里面的税务报表只是把你自己记的数字重新排了一遍，**不构成任何税务、投资或财务建议**，报税请找专业人士。
-- 你的数据在你自己机器上，所以**备份的责任也在你自己手上**。
-- 它只在你主动说话时记录，**不读屏幕、不采集系统活动、不在后台监控你**。
+## Requirements
 
----
+| | |
+| --- | --- |
+| OS | macOS |
+| Python | 3.9+ (the system one is usually enough) |
+| Node.js | Not needed — the dashboard is prebuilt |
+| Dependencies | Exactly one: `openpyxl`, and only for Excel export |
 
-开发者请看仓库根 `CLAUDE.md`（发布包内同样带着它）。本地自证：在 `server/` 运行 `python3 -m unittest discover -v`。
+## Documentation
 
-内部施工记录 `implementation-notes.md` 与 `implementation-report.md` 含本机绝对路径与私有网络主机名，按设计不进发布包，只存在于源码仓库。
+| I want to… | Read |
+| --- | --- |
+| Install it, find the dashboard, set up autostart | [安装指南](docs/安装指南.md) |
+| Back up my data, move to a new machine | [备份与恢复](docs/备份与恢复.md) |
+| Know what this version still can't do | [已知问题](docs/已知问题.md) |
+| Understand the codebase | `CLAUDE.md` at the repo root |
+
+> **Read [备份与恢复](docs/备份与恢复.md) before you come to rely on this.** There is no one-click restore in this version — backup is on you, and copying the wrong file loses data (the ledgers run in WAL mode, so the `.sqlite3` file alone is not the whole story).
+
+Verify a checkout yourself: `cd server && python3 -m unittest discover -v` — 263 tests, no network, nothing written outside temp directories.
+
+## License & disclaimer
+
+**MIT** — see [LICENSE](LICENSE). Use it, change it, redistribute it; keep the copyright and licence notice.
+
+LifeOS is provided as is, with no warranty of any kind. It is a **recording tool, not a financial adviser** — the tax sheet only rearranges numbers you entered yourself and is not tax, investment or financial advice. Your data lives on your machine, which means **backing it up is your responsibility**.

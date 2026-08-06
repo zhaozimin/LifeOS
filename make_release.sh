@@ -16,6 +16,7 @@ root=$(cd "$(dirname "$0")" && pwd)
 RELEASE_PATHS=(
   "VERSION"
   "README.md"
+  "README.zh-CN.md"
   "LICENSE"
   "CLAUDE.md"
   ".gitignore"

@@ -31,7 +31,10 @@ INSTALL_GUIDE = DOCS / "安装指南.md"
 BACKUP_GUIDE = DOCS / "备份与恢复.md"
 KNOWN_ISSUES = DOCS / "已知问题.md"
 READ_ME = ROOT / "README.md"
-USER_DOCS = (READ_ME, INSTALL_GUIDE, BACKUP_GUIDE, KNOWN_ISSUES)
+# 中文 README 是发布物里给用户看的那一份，与英文 README 同样受私货扫描与路径存在性约束——
+# 两份轮流更新时，漏改的那一份正是用户会照着走的那一份。
+READ_ME_ZH = ROOT / "README.zh-CN.md"
+USER_DOCS = (READ_ME, READ_ME_ZH, INSTALL_GUIDE, BACKUP_GUIDE, KNOWN_ISSUES)
 
 
 def read(path: Path) -> str:
@@ -189,6 +192,39 @@ class KnownIssuesStayTrue(unittest.TestCase):
         uninstaller = read(SERVER / "uninstall_lifeos.sh")
         self.assertIn("--purge-data", uninstaller)
         self.assertIn("拒绝自动清除双账本", uninstaller)
+
+
+class BilingualReadmesStayInSync(unittest.TestCase):
+    """两份 README 是同一件事的两个语种，漂移的那一刻起就有一半读者被指错路。
+
+    只锁「会让用户走错」的那几样：版本号、技能目录名、图片资源、彼此的互链。文案不锁——
+    中文版本来就该说得比英文版更贴近用户，逐字对齐反而会逼出翻译腔。
+    """
+
+    def setUp(self):
+        self.pair = {"README.md": read(READ_ME), "README.zh-CN.md": read(READ_ME_ZH)}
+
+    def test_both_teach_the_current_version(self):
+        version = read(ROOT / "VERSION").strip()
+        for name, text in self.pair.items():
+            with self.subTest(doc=name):
+                self.assertIn(f"lifeos-install-skill-{version}.zip", text, "安装话术里的引导包版本落后于 VERSION")
+                self.assertIn(f"lifeos-{version}.zip", text, "下载指引里的主包版本落后于 VERSION")
+
+    def test_both_teach_the_current_skill_directory(self):
+        """技能目录改过一次名；两份 README 里任何一处旧名都会让用户把技能装进不存在的地方。"""
+        for name, text in self.pair.items():
+            with self.subTest(doc=name):
+                self.assertIn("zzm-lifeos-install", text)
+                self.assertNotRegex(text, r"skills/lifeos-install|~/\.claude/skills/lifeos\b")
+
+    def test_both_link_to_each_other_and_to_existing_assets(self):
+        self.assertIn("README.zh-CN.md", self.pair["README.md"], "英文 README 没有给出中文版入口")
+        self.assertIn("README.md", self.pair["README.zh-CN.md"], "中文 README 没有给出英文版入口")
+        for name, text in self.pair.items():
+            for asset in re.findall(r"docs/assets/[A-Za-z0-9_.-]+\.svg", text):
+                with self.subTest(doc=name, asset=asset):
+                    self.assertTrue((ROOT / asset).is_file(), f"README 引用了不存在的图片：{asset}")
 
 
 class DocsCarryNoSecrets(unittest.TestCase):
