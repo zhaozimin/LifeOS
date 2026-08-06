@@ -65,12 +65,12 @@ LifeOS 把你的**时间**和**金钱**记在同一个地方。你不用打开 A
 请帮我在这台 Mac 上安装 LifeOS，严格按下面的步骤做，不要跳步、不要自己发挥：
 
 1. 打开 https://github.com/zhaozimin/LifeOS/releases/latest ，
-   下载名字形如 lifeos-install-skill-1.0.0.zip 的附件，以及它旁边同名的 .sha256 文件。
+   下载名字形如 lifeos-install-skill-1.1.0.zip 的附件，以及它旁边同名的 .sha256 文件。
 2. 用 shasum -a 256 -c 校验这个 zip。校验不通过就立刻停下来告诉我，不要继续。
 3. 解压，把里面的 lifeos-install 整个文件夹放进你自己的 skills 目录
    （Claude Code 通常是 ~/.claude/skills/，别的 Agent 用你自己的那个）。
 4. 执行这一条命令，让脚本自己完成剩下的全部安装：
-   python3 ~/.claude/skills/lifeos-install/scripts/lifeos_bootstrap.py install
+   python3 ~/.claude/skills/zzm-lifeos-install/scripts/lifeos_bootstrap.py install
 5. 脚本跑完会打印一行面板地址和一个文件路径。把那一行原样发给我。
 6. 中途任何一步报错，把报错原文发给我，不要自己猜着改。
 ```
@@ -79,7 +79,7 @@ LifeOS 把你的**时间**和**金钱**记在同一个地方。你不用打开 A
 
 ### 路径二：自己下载安装包
 
-到 [Releases 页面](https://github.com/zhaozimin/LifeOS/releases/latest) 下载 `lifeos-1.0.0.zip`，解压，在终端里跑一条安装命令。全过程见《[安装指南](docs/安装指南.md)》路径二。
+到 [Releases 页面](https://github.com/zhaozimin/LifeOS/releases/latest) 下载 `lifeos-1.1.0.zip`，解压，在终端里跑一条安装命令。全过程见《[安装指南](docs/安装指南.md)》路径二。
 
 ### 路径三：从源码装
 

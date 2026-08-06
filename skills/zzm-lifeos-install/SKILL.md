@@ -1,12 +1,12 @@
 ---
-name: lifeos-install
-description: 把 LifeOS 人生记录系统装到用户本机。用户说要安装、部署、下载、更新、升级 LifeOS，或问「LifeOS 怎么装」「帮我装一下 LifeOS」「LifeOS 装好了吗」「LifeOS 在哪」「怎么卸载 LifeOS」时加载本 Skill，用 scripts/lifeos_bootstrap.py 从 GitHub Release 完成真实安装、体检或卸载。安装完成后记录与查询请改用 lifeos Skill。
+name: zzm-lifeos-install
+description: 把 LifeOS 人生记录系统装到用户本机。用户说要安装、部署、下载、更新、升级、重装 LifeOS，或问「LifeOS 怎么装」「帮我装一下 LifeOS」「LifeOS 装好了吗」「LifeOS 在哪」「LifeOS 坏了/打不开/连不上/修一下」「怎么卸载 LifeOS」时加载本 Skill，用 scripts/lifeos_bootstrap.py 从 GitHub Release 完成真实安装、体检、修复或卸载。安装完成后记录与查询请改用 zzm-lifeos Skill。
 ---
 
 <!--
 [INPUT]: 依赖用户本机 shell 与 Python 3.9+；一切网络、校验、部署与自检下沉给 scripts/lifeos_bootstrap.py。
 [OUTPUT]: 对外提供 LifeOS 的引导安装入口：四分意图（装/看/卸/换宿主），并把脚本回执逐字转达给用户。
-[POS]: skills/lifeos-install 的薄入口。它只判断用户想干什么，不判断任何正确性——
+[POS]: skills/zzm-lifeos-install 的薄入口。它只判断用户想干什么，不判断任何正确性——
        域白名单、sha256、目标占用、双 dbPath 归属与 Token 边界全部由脚本裁定。
        它与 lifeos Skill 是先后关系而非并列：本 Skill 只负责把 LifeOS 装上，装完即退场。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

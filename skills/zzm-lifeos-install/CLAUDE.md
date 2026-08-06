@@ -1,4 +1,4 @@
-# skills/lifeos-install/
+# skills/zzm-lifeos-install/
 > L2 | 父级: ../CLAUDE.md
 
 成员清单

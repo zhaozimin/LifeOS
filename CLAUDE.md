@@ -4,7 +4,7 @@ Python 3.9+ 标准库多模块服务 + 两本 SQLite WAL 账本 + React 19/TypeS
 
 <directory>
 server/ - 单进程 HTTP 服务、双账本领域包、部署脚本、测试与预构建仪表盘（4 子目录：core、domains、runtime、web-dashboard）
-skills/ - LifeOS 的 Agent 接入层：lifeos 路由时间/财务/部署意图，lifeos-install 从 GitHub Release 引导安装（2 子目录：lifeos、lifeos-install）
+skills/ - LifeOS 的 Agent 接入层：zzm-lifeos 路由时间/财务/部署意图，zzm-lifeos-install 从 GitHub Release 引导安装（2 子目录：zzm-lifeos、zzm-lifeos-install）
 docs/ - 面向普通用户的安装、备份恢复与已知问题；随发布 ZIP 交付，是用户手上唯一的中文手册
 </directory>
 

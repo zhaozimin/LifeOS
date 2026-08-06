@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -42,6 +43,7 @@ ALLOWED_HOSTS = (
     "objects.githubusercontent.com",
 )
 DEFAULT_INSTALL_PATH = Path("~/Library/Application Support/LifeOS/app")
+DEFAULT_PORT = 59418
 POINTER_RELATIVE = Path(".config/lifeos/install.json")
 # 宿主是一张表而不是一串 if：判据永远是「这个目录在不在」，新 Agent 出现时只加一行。
 SKILL_HOSTS = (
@@ -60,11 +62,19 @@ SIDECAR_PREFIX = "lifeos-install-skill-"
 HEALTH_DOMAINS = ("time", "finance")
 # 「这个目录里到底是不是 LifeOS」的唯一判据，升级与卸载都靠它，不靠目录名。
 INSTALL_MARKER = "server/lifeos_node_server.py"
+# 记录技能的目录名带 zzm- 前缀：宿主的 skills/ 是所有来源共用的扁平命名空间，
+# 一个叫 lifeos 的通名迟早撞上别人家的同名 skill，而撞上的后果是拒绝覆盖、整条安装中止。
+SKILL_DIR_NAME = "zzm-lifeos"
+# 改名之前发布过的目录名；升级时要认得出来才能退役，不然新旧两份一起留在触发面上。
+LEGACY_SKILL_DIR_NAMES = ("lifeos", "lifeos-install")
+OWN_SKILL_NAME_LINES = frozenset(
+    {"name: zzm-lifeos", "name: zzm-lifeos-install", "name: lifeos", "name: lifeos-install"}
+)
 REQUIRED_MEMBERS = (
     "server/install_and_start_lifeos_node.sh",
     "server/install_launch_agent.sh",
     "server/uninstall_lifeos.sh",
-    "skills/lifeos/SKILL.md",
+    f"skills/{SKILL_DIR_NAME}/SKILL.md",
 )
 HEX_DIGITS = set("0123456789abcdef")
 
@@ -309,6 +319,73 @@ def install_target_verdict(target: Path, upgrade: bool) -> str:
     return "upgrade"
 
 
+def pointer_install_path(pointer: Path) -> "Path | None":
+    """只读全局指针；读不到或读坏了都当作「没有在服役的安装」，预检不为一个损坏的指针拦下干净的安装。"""
+    try:
+        payload = json.loads(pointer.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    candidate = payload.get("installPath") if isinstance(payload, dict) else None
+    return Path(candidate).expanduser().resolve() if isinstance(candidate, str) and candidate else None
+
+
+def port_is_occupied(port: int, *, timeout: float = 1.0) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(timeout)
+        return probe.connect_ex(("127.0.0.1", port)) == 0
+
+
+def port_answers_as_this_install(target: Path, port: int) -> bool:
+    """端口上那个服务能否被本安装自己的 config 认亲——「有人以 200 应答」不是身份。"""
+    try:
+        configured_port, token = read_connection(target)
+    except BootstrapError:
+        return False
+    if configured_port != port:
+        return False
+    try:
+        payload = probe_health(port, token)
+    except (OSError, urllib.error.URLError, json.JSONDecodeError, ValueError):
+        return False
+    return not health_problems(payload, target / "server" / "runtime")
+
+
+def intended_port(target: Path, explicit: "int | None") -> int:
+    """预检要用的端口：命令行 > 已有 config > 默认。升级时不指定端口就该沿用现有的那个。"""
+    if explicit:
+        return explicit
+    try:
+        return read_connection(target)[0]
+    except BootstrapError:
+        return DEFAULT_PORT
+
+
+def preflight_local_conflicts(
+    target: Path, port: int, verdict: str, *, pointer: Path, replace_pointer: bool
+) -> None:
+    """把「指针指向别的安装」与「端口被无法认亲的服务占用」这两道否决闸提到下载与写盘之前。
+
+    这两条判据只需要一个指针文件和一次 TCP 连接，不依赖任何已部署的文件。让它们跑在 deploy
+    之后没有技术必然性，代价却是每一次拒绝都在用户磁盘上留下一套没有 config、没有自启的半安装，
+    而重跑时又会被「目标已有内容」挡回去——安装宪法要求任何拒绝都发生在第一次写盘之前。
+    """
+    resolved = target.expanduser().resolve()
+    if not replace_pointer:
+        serving = pointer_install_path(pointer)
+        if serving and serving != resolved and (serving / INSTALL_MARKER).is_file():
+            raise BootstrapError(
+                f"本机已有一套在服役的 LifeOS：{pointer} 指向 {serving}。",
+                "什么都没有被写进你的电脑。继续安装会把 Agent 的每一条记录改道到新目录，而原面板上"
+                "什么都不会多出来，因此拒绝。确实要把服役安装换成本目录，加 --replace-pointer 重跑"
+                "（原安装的两本账本不会被动）。",
+            )
+    if port_is_occupied(port) and not (verdict == "upgrade" and port_answers_as_this_install(target, port)):
+        raise BootstrapError(
+            f"端口 {port} 已被一个无法认亲的服务占用，拒绝安装。",
+            "什么都没有被写进你的电脑。请先停止占用该端口的程序，或用 --port <其它端口> 重跑。",
+        )
+
+
 def deploy(source: Path, target: Path, verdict: str) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     if verdict == "fresh":
@@ -349,17 +426,25 @@ def host_advice() -> str:
 
 
 def looks_like_lifeos_skill(path: Path) -> bool:
-    """只认 SKILL.md 前言里那一行 `name: lifeos`，避免把同名的别人家 skill 当成自己的旧版本删掉。"""
+    """只认 SKILL.md 前言里的 `name:` 那一行，避免把同名的别人家 skill 当成自己的旧版本删掉。
+
+    改名成 zzm-lifeos 之前发布过 `lifeos`/`lifeos-install`，升级路径要认得出它们才能退役掉，
+    否则旧目录会连同新目录一起留在触发面上，两份描述几乎一样，宿主加载哪一份全凭运气。
+    """
     try:
         text = (path / "SKILL.md").read_text(encoding="utf-8")
     except OSError:
         return False
-    return any(line.strip() == "name: lifeos" for line in text.splitlines())
+    return any(line.strip() in OWN_SKILL_NAME_LINES for line in text.splitlines())
 
 
 def install_skill_into_host(host_dir: Path, source: Path) -> Path:
     target = host_dir / source.name
-    if target.exists():
+    # 软链接要先看是不是链接再看存不存在：桥接工具（dbs-bridge 之流）把 skill 链进宿主是常态，
+    # 而 exists() 会跟着链接走进源目录，rmtree 对符号链接则直接抛 OSError。
+    if target.is_symlink():
+        target.unlink()
+    elif target.exists():
         if not looks_like_lifeos_skill(target):
             raise BootstrapError(
                 f"{target} 已存在，但它不是 LifeOS 的 skill，拒绝覆盖。",
@@ -370,6 +455,28 @@ def install_skill_into_host(host_dir: Path, source: Path) -> Path:
     host_dir.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source, target)
     return target
+
+
+def retire_legacy_skills(host_dir: Path) -> list:
+    """删掉改名前留在同一宿主里的 lifeos / lifeos-install。
+
+    只删经 SKILL.md 认亲确实是本项目的那两个目录；别人家的同名 skill 一律不碰。不删的代价是
+    新旧两份同时留在触发面上，而旧那份指向的脚本已经不再随发布更新。
+    """
+    retired = []
+    for legacy in LEGACY_SKILL_DIR_NAMES:
+        stale = host_dir / legacy
+        try:
+            if stale.is_symlink():
+                if looks_like_lifeos_skill(stale):
+                    stale.unlink()
+                    retired.append(str(stale))
+            elif stale.is_dir() and looks_like_lifeos_skill(stale):
+                shutil.rmtree(stale)
+                retired.append(str(stale))
+        except OSError:
+            continue
+    return retired
 
 
 # ── 本机安装状态 ─────────────────────────────────────────────────────────────
@@ -507,6 +614,15 @@ def command_install(args: argparse.Namespace) -> int:
     home = Path.home()
     target = Path(args.install_path).expanduser() if args.install_path else DEFAULT_INSTALL_PATH.expanduser()
     verdict = install_target_verdict(target, args.upgrade)
+    # 三道否决闸（目标占用、指针冲突、端口占用）全部跑完才允许下载：它们只需要本机现状，
+    # 排在 deploy 之后就等于用一套半安装换一条本可以早说的拒绝。
+    preflight_local_conflicts(
+        target,
+        intended_port(target, args.port),
+        verdict,
+        pointer=home / POINTER_RELATIVE,
+        replace_pointer=args.replace_pointer,
+    )
     say(f"安装目标：{target}（{'全新安装' if verdict == 'fresh' else '就地升级，保留现有账本与访问密钥'}）")
 
     archive, checksum = select_release_assets(fetch_release(args.version))
@@ -555,34 +671,51 @@ def command_install(args: argparse.Namespace) -> int:
     wait_for_health(port, token, target / "server" / "runtime")
     say("认证 health 通过：时间与财务两本账本都落在本次安装内")
 
+    # 服务此刻已经常驻并自证过了：面板地址必须在这里交付，不能押在后面的宿主注入之后。
+    # 注入是「锦上添花」，而密钥是用户唯一的入口——让一个装不进去的 skill 扣下密钥，
+    # 等于把一套跑得好好的服务报告成没装上。
+    connection_info = target / "server" / "runtime" / "connection-info.txt"
+    print("面板地址如下，含访问密钥，只交付给用户本人一次，不要回写进任何对话摘要、日志或文件：")
+    print(dashboard_url(port, token))
+    print(f"这行地址也保存在 {connection_info}（权限 0600），忘了随时自己去看。")
+
     hosts = detect_hosts(home)
     installed_hosts, warnings = [], []
-    skill_source = target / "skills" / "lifeos"
+    skill_source = target / "skills" / SKILL_DIR_NAME
     targets = available_hosts(hosts) + [Path(extra).expanduser() for extra in args.skill_host or []]
     for host_dir in targets:
-        installed_hosts.append(str(install_skill_into_host(host_dir, skill_source)))
+        # 一个宿主装不上不该连累其余宿主，更不该连累已经装好的服务：逐个降级成提醒。
+        try:
+            installed_hosts.append(str(install_skill_into_host(host_dir, skill_source)))
+        except BootstrapError as error:
+            warnings.append(f"{host_dir} 没装上：{error} {error.advice}")
+            continue
+        except OSError as error:
+            warnings.append(f"{host_dir} 没装上：{error}。请确认这个目录存在且可写，然后重跑 install --upgrade。")
+            continue
+        for retired in retire_legacy_skills(host_dir):
+            say(f"已退役改名前的旧技能目录：{retired}")
     if installed_hosts:
         say(f"LifeOS 记录技能已装进 {len(installed_hosts)} 个 Agent 宿主")
     else:
         warnings.append(host_advice())
 
     if router_requested(hosts):
-        router = home / ".hermes" / "skills" / "lifeos" / "scripts" / "install_lifeos_router.py"
-        code, output = run_step([sys.executable, str(router)], target)
-        if code != 0:
-            warnings.append(f"Hermes 常驻路由没装上：{output}")
+        router = home / ".hermes" / "skills" / SKILL_DIR_NAME / "scripts" / "install_lifeos_router.py"
+        if router.is_file():
+            code, output = run_step([sys.executable, str(router)], target)
+            if code != 0:
+                warnings.append(f"Hermes 常驻路由没装上：{scrub(output, token)}")
+            else:
+                say("Hermes 常驻路由已切换到 LifeOS")
         else:
-            say("Hermes 常驻路由已切换到 LifeOS")
+            warnings.append("Hermes 宿主里没有本次安装的技能脚本，跳过常驻路由切换。")
 
     if not _dependency_present():
         warnings.append("本机 python3 没有 openpyxl，财务报表导出会返回 503。想用导出就跑一次：python3 -m pip install -r " + str(target / "server" / "requirements.txt"))
 
     for warning in warnings:
         say(f"提醒：{warning}")
-    connection_info = target / "server" / "runtime" / "connection-info.txt"
-    print("面板地址如下，含访问密钥，只交付给用户本人一次，不要回写进任何对话摘要、日志或文件：")
-    print(dashboard_url(port, token))
-    print(f"这行地址也保存在 {connection_info}（权限 0600），忘了随时自己去看。")
     print(json.dumps({
         "command": "install",
         "ok": True,
@@ -639,9 +772,33 @@ def command_uninstall(args: argparse.Namespace) -> int:
         print(scrub(output, secret))
     if code != 0:
         raise BootstrapError(f"卸载脚本以退出码 {code} 结束。", "卸载脚本的三重认亲有任何一环存疑就会拒绝动手，这是设计行为；请按上面的中文提示处理。")
+    # 服务停了而 skill 还留在宿主里，Agent 下一句「我开始写代码了」仍会照常调用 timectl，
+    # 对着一个已经没人监听的端口报连接失败——用户刚卸载完，看到的却是一条像是坏了的报错。
+    removed_skills = []
+    for host_dir in available_hosts(detect_hosts(Path.home())):
+        for name in (SKILL_DIR_NAME,) + LEGACY_SKILL_DIR_NAMES:
+            stale = host_dir / name
+            try:
+                if stale.is_symlink():
+                    if looks_like_lifeos_skill(stale):
+                        stale.unlink()
+                        removed_skills.append(str(stale))
+                elif stale.is_dir() and looks_like_lifeos_skill(stale):
+                    shutil.rmtree(stale)
+                    removed_skills.append(str(stale))
+            except OSError:
+                continue
+    if removed_skills:
+        print(f"已从 {len(removed_skills)} 个 Agent 宿主移除记录技能，AI 不会再对着已停的服务下命令。")
     runtime = root / "server" / "runtime"
-    print(f"只卸载了服务与开机自启。你的两本账本仍在 {runtime}，一条记录都没有删。")
-    print(json.dumps({"command": "uninstall", "ok": True, "installPath": str(root), "dataKept": str(runtime)}, ensure_ascii=False))
+    print(f"只卸载了服务、开机自启与记录技能。你的两本账本仍在 {runtime}，一条记录都没有删。")
+    print(json.dumps({
+        "command": "uninstall",
+        "ok": True,
+        "installPath": str(root),
+        "dataKept": str(runtime),
+        "skillsRemoved": removed_skills,
+    }, ensure_ascii=False))
     return 0
 
 
@@ -725,6 +882,16 @@ def main(argv: "list | None" = None) -> int:
         print(f"✗ {exc}", file=sys.stderr)
         if exc.advice:
             print(f"  下一步：{exc.advice}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        print("✗ 已中断，本次操作没有走完。", file=sys.stderr)
+        print("  下一步：重跑本命令；已经落盘的部分会被下一次安装判据重新裁定。", file=sys.stderr)
+        return 130
+    except OSError as exc:
+        # 权限、磁盘满、目录不存在、连接被掐断都落在这里。裸 traceback 对一个不懂技术的用户
+        # 等于没有信息，而本项目的法则是任何失败都必须带下一步。
+        print(f"✗ 本机文件或网络操作失败：{exc}", file=sys.stderr)
+        print("  下一步：确认目标目录存在且可写、磁盘仍有空间、网络通畅，然后重跑本命令。", file=sys.stderr)
         return 2
 
 

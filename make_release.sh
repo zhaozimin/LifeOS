@@ -79,7 +79,7 @@ release_name="lifeos-$version"
 out="$root/dist/$release_name"
 archive="$root/dist/$release_name.zip"
 # 引导 Skill 单独出一个小包：粉丝先下它、装进自己的 Agent，才有人替他去拉几 MB 的主包。
-skill_name="lifeos-install"
+skill_name="zzm-lifeos-install"
 skill_source="skills/$skill_name"
 skill_stage="$root/dist/lifeos-install-skill-$version"
 skill_archive="$root/dist/lifeos-install-skill-$version.zip"

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import urllib.error
@@ -83,7 +84,10 @@ def request_api(method: str, path: str, *, domain: str, payload: dict[str, Any] 
         raise LifeOSTransportError(f"{domain} 写请求越过域前缀，已在本地拒绝。")
     active = connection()
     body = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    request = urllib.request.Request(f"http://127.0.0.1:{active.port}{path}", data=body, method=method, headers={"Authorization": f"Bearer {active.token}", "Content-Type": "application/json"})
+    # X-FinOS-Actor 恒为 agent：本层是 Agent 专用通道（面板走浏览器的 fetch，不经这里），
+    # 不发这个头，服务端删除路由就按默认值把 AI 的删除记成 dashboard，审计链里再也分不出
+    # 是 AI 删的还是用户在网页上亲手删的——「笔迹可辨认」这条产品铁律断在这一行。
+    request = urllib.request.Request(f"http://127.0.0.1:{active.port}{path}", data=body, method=method, headers={"Authorization": f"Bearer {active.token}", "Content-Type": "application/json", "X-FinOS-Actor": "agent"})
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
     try:
         with opener.open(request, timeout=15) as response:
@@ -95,7 +99,10 @@ def request_api(method: str, path: str, *, domain: str, payload: dict[str, Any] 
         except (UnicodeDecodeError, json.JSONDecodeError): parsed = {"message": f"HTTP {exc.code}"}
         if 400 <= exc.code < 500: raise LifeOSHTTPError(exc.code, parsed) from exc
         raise LifeOSTransportError("服务端失败，写入结果未知；禁止重试，请先只读核查。") from exc
-    except (OSError, urllib.error.URLError) as exc:
+    except (OSError, urllib.error.URLError, http.client.HTTPException) as exc:
+        # http.client.HTTPException 不是 OSError 的子类：服务端在写完之后崩溃、响应体被截断时
+        # 抛的是 IncompleteRead，漏捕它就等于让「结果未知」纪律在最该生效的那个窗口整条失效——
+        # Agent 收到的不是禁止重试的判据，而是一段裸栈，于是很可能重发同一笔。
         raise LifeOSTransportError("连接失败，写入结果未知；禁止重试，请先只读核查。") from exc
     try:
         parsed = json.loads(raw.decode("utf-8"))

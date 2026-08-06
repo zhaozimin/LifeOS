@@ -88,11 +88,11 @@ bash <安装目录>/server/install_and_start_lifeos_node.sh
 
 ## 6. 安装 Hermes 强制路由
 
-把整个 `skills/lifeos/` 同步到 `~/.hermes/skills/lifeos/` 后运行：
+把整个 `skills/zzm-lifeos/` 同步到 `~/.hermes/skills/zzm-lifeos/` 后运行：
 
 ```bash
-python3 ~/.hermes/skills/lifeos/scripts/install_lifeos_router.py
-python3 ~/.hermes/skills/lifeos/scripts/install_lifeos_router.py --check
+python3 ~/.hermes/skills/zzm-lifeos/scripts/install_lifeos_router.py
+python3 ~/.hermes/skills/zzm-lifeos/scripts/install_lifeos_router.py --check
 ```
 
 安装器只在 `SOUL.md` 中维护一块带 `LIFEOS_MANAGED_ROUTER` 标记的托管文本，保留块外既有人格，并会**显式扫描并整块删除旧 `TIMEOS_MANAGED_ROUTER` 块**——否则 SOUL.md 里会出现新旧双路由。标记残缺或出现多块时安装器硬失败，交人工处理，不猜该保留哪一块。
@@ -164,7 +164,7 @@ python3 <安装目录>/server/migration_rehearsal.py --synthetic-fixture <临时
 5. 取证搬运：整目录哈希清单 → `cp -Rp` → 副本重算 diff 零差异 → 三锚基线落盘。生产 runtime 全程只读一次，原件封存为回滚锚。
 6. 安装 LifeOS + LaunchAgent，health 认亲：单 Token、双 dbPath、PID、清单式 buildId。
 7. 写后三锚对账 + 面板肉眼复核两域历史数据；任一锚不中即回滚到封存副本。
-8. Hermes 切换：装 `skills/lifeos` → 跑 `install_lifeos_router.py` 换 SOUL 块 → 旧 skill 目录改名归档 → 重扫 → 三类句子各冒烟一条（纯时间 / 纯记账 / 混合句），真实入账后立即 `timectl cancel` 与 `finctl void` 留下审计痕。
+8. Hermes 切换：装 `skills/zzm-lifeos` → 跑 `install_lifeos_router.py` 换 SOUL 块 → 旧 skill 目录改名归档 → 重扫 → 三类句子各冒烟一条（纯时间 / 纯记账 / 混合句），真实入账后立即 `timectl cancel` 与 `finctl void` 留下审计痕。
 
 ### 9.5 旧双指针归档
 

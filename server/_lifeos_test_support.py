@@ -17,7 +17,7 @@ from pathlib import Path
 
 SERVER_ROOT = Path(__file__).resolve().parent
 REPOSITORY_ROOT = SERVER_ROOT.parent
-SKILL_SCRIPTS = REPOSITORY_ROOT / "skills/lifeos/scripts"
+SKILL_SCRIPTS = REPOSITORY_ROOT / "skills/zzm-lifeos/scripts"
 PROTECTED_DEVELOPMENT_PORT = 59418
 
 # 部署套件按关注点拆成三份，端口纪律这类「整套都必须成立」的断言要对它们同时成立；
@@ -30,7 +30,7 @@ DEPLOYMENT_SUITE_SOURCES = (
 )
 
 # Skill 脚本以顶层模块名被导入（timectl / finctl / lifeconn ...），与 CI 里
-# `cd skills/lifeos/scripts && unittest discover` 的导入方式保持一致。
+# `cd skills/zzm-lifeos/scripts && unittest discover` 的导入方式保持一致。
 if str(SKILL_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SKILL_SCRIPTS))
 

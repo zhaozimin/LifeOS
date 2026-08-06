@@ -78,6 +78,22 @@ def _in_account_currency(item: dict[str, Any], account_currency: str, base_curre
     return round(convert_from_base_currency(base, account_currency, base_currency, rates), 2)
 
 
+def _account_flows(records: list[dict[str, Any]], currency_of: dict[str, str], base_currency: str, rates: dict[str, Any]) -> "dict[str, dict[str, float]]":
+    """把一批交易按账户归集成流入/流出/笔数。
+
+    流入流出必须落到**各自账户的币种**，与 views.current_balance_for_account 同源：
+    一笔 1000 USD 的跨币种转账，出账端是 1000 USD、入账端是 7200 CNY，不是两边都 1000。
+    """
+    flows: dict[str, dict[str, float]] = defaultdict(lambda: {"in": 0., "out": 0., "count": 0.})
+    for item in records:
+        source, target = item.get("fromAccountName"), item.get("toAccountName")
+        if item["kind"] in {"expense", "transfer"} and source:
+            flows[source]["out"] += abs(_in_account_currency(item, currency_of.get(source, base_currency), base_currency, rates)); flows[source]["count"] += 1
+        if item["kind"] in {"income", "transfer"} and target:
+            flows[target]["in"] += abs(_in_account_currency(item, currency_of.get(target, base_currency), base_currency, rates)); flows[target]["count"] += 1
+    return flows
+
+
 def build_export_workbook(connection: sqlite3.Connection, view: str = "combined", from_date: str | None = None, to_date: str | None = None) -> bytes:
     Workbook, _, _, _, _ = _openpyxl(); font, fill, alignment, column, money = _style(Workbook)
     items, workbook = _transactions(connection,view,from_date,to_date), Workbook(); details = workbook.active; details.title="明细"
@@ -101,26 +117,30 @@ def build_export_workbook(connection: sqlite3.Connection, view: str = "combined"
     for item in items:
         category=item.get("category") or {}; name=category_id_and_name(category)[1] or "未分类"; grouped[name]["group"] = category.get("group","") if isinstance(category,dict) else ""; grouped[name]["count"]+=1; grouped[name][item["kind"] if item["kind"] in {"income","expense"} else "income"] += _base(item) if item["kind"]!="transfer" else 0
     for name,data in sorted(grouped.items(),key=lambda pair:pair[1]["income"]+pair[1]["expense"],reverse=True): _append(categories,[name,data["group"],data["count"],data["income"],data["expense"],data["income"]-data["expense"],(data["income"]+data["expense"])/max(data["count"],1)])
-    accounts=workbook.create_sheet("账户汇总"); _header(accounts,["账户","归属","类型","期初余额","流入合计","流出合计","期末余额","笔数"],font,fill,alignment); flows: dict[str,dict[str,float]]=defaultdict(lambda:{"in":0.,"out":0.,"count":0.})
+    accounts=workbook.create_sheet("账户汇总"); _header(accounts,["账户","归属","类型","期初余额","流入合计","流出合计","期末余额","笔数"],font,fill,alignment)
     currency_of={str(a.get("name") or ""):str(a.get("currency") or base_currency).upper() for a in list_accounts(connection)}
-    for item in items:
-        source,target=item.get("fromAccountName"),item.get("toAccountName")
-        # 流入流出必须落到**各自账户的币种**，与 views.current_balance_for_account 同源：
-        # 一笔 1000 USD 的跨币种转账，出账端是 1000 USD、入账端是 7200 CNY，不是两边都 1000。
-        # 两端各算各的，期末余额才与面板真源一致。
-        if item["kind"] in {"expense","transfer"} and source:
-            flows[source]["out"]+=abs(_in_account_currency(item, currency_of.get(source, base_currency), base_currency, rates)); flows[source]["count"]+=1
-        if item["kind"] in {"income","transfer"} and target:
-            flows[target]["in"]+=abs(_in_account_currency(item, currency_of.get(target, base_currency), base_currency, rates)); flows[target]["count"]+=1
+    # 账户余额是账户自己的客观事实，不随「看个人还是看公司」而改变，也不随日期窗口而改变。
+    # 因此这张表用 combined 全量流水而非上面按 view 筛过的 items：拿 view=company 导出时，
+    # 个人账户会整行归零、期末余额显示成开户余额，用户据此核对会以为账户被清空了。
+    ledger_records=_transactions(connection,"combined",None,to_date)
+    period=[item for item in ledger_records if not from_date or item["occurredAt"][:10]>=from_date]
+    # 期初 = 开户余额 + 区间起点之前的全部流水。此前期初直接取开户余额（全时段起点），
+    # 而流入流出只算区间内，两个口径对不上：一个 2025 年累计进账 4 万的账户，导出 2026-08
+    # 单月报表会显示期初 0、期末 −3000，而真实余额是 37000。
+    prior=[item for item in ledger_records if from_date and item["occurredAt"][:10]<from_date]
+    flows, opening_flows = _account_flows(period,currency_of,base_currency,rates), _account_flows(prior,currency_of,base_currency,rates)
     for item in list_accounts(connection):
         if item.get("deletedAt"): continue
-        flow=flows[item.get("name") or ""]; opening=float(item.get("openingBalance") or 0)
+        name=item.get("name") or ""; flow, before = flows[name], opening_flows[name]
+        liability=item.get("classification")=="liability"
+        opening=float(item.get("openingBalance") or 0)
+        opening=opening-before["in"]+before["out"] if liability else opening+before["in"]-before["out"]
         # 负债账户的余额口径与资产相反：刷卡（流出）增加欠款，还款（流入）减少欠款。
         # 期初列本来就是负债口径（正数 = 欠款），期末列却一直套资产公式，
         # 于是同一张表里两列互不相容——用户拿这份 XLSX 核对信用卡账单，欠款少算两倍刷卡额。
         # 口径必须与 views.current_balance_for_account 同源，否则导出与面板互相打架。
-        closing=opening-flow["in"]+flow["out"] if item.get("classification")=="liability" else opening+flow["in"]-flow["out"]
-        _append(accounts,[item.get("name"),item.get("ownership","unspecified"),item.get("uiAccountType") or item.get("type") or "",opening,flow["in"],flow["out"],closing,flow["count"]])
+        closing=opening-flow["in"]+flow["out"] if liability else opening+flow["in"]-flow["out"]
+        _append(accounts,[name,item.get("ownership","unspecified"),item.get("uiAccountType") or item.get("type") or "",opening,flow["in"],flow["out"],closing,flow["count"]])
     # 说明页同样过 _append：view/from/to 直接来自 query，日期闸只查长度与两个短横，
     # 「-999-12-01」这种以 '-' 开头的串能原样落进 B 列。
     note=workbook.create_sheet("说明"); _header(note,["项","值"],font,fill,alignment); _append(note,["视角",normalize_view_param(view)]); _append(note,["起始日期",from_date or "（无限制）"]); _append(note,["截止日期",to_date or "（无限制）"]); _append(note,["导出时间",datetime.now(record_timezone()[0]).isoformat()]); _append(note,["明细笔数",len(items)])

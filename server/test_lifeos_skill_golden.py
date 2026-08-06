@@ -1,5 +1,5 @@
 """
-[INPUT]: 依赖 _lifeos_test_support 的 Skill 脚本路径与一次性回环端口，以及 skills/lifeos/scripts 下的
+[INPUT]: 依赖 _lifeos_test_support 的 Skill 脚本路径与一次性回环端口，以及 skills/zzm-lifeos/scripts 下的
          lifeconn/timectl/finctl/timeview/finview/install_lifeos_router；所有指针、配置与网络都在临时目录。
 [OUTPUT]: 对外提供 P4 的 Skill 金样：SOUL 托管块三态与撑大拒绝、时间/账务 display 符号字典、
           lifeconn 的白名单与结果未知矩阵、指针迁移矩阵、双 ctl 全命令面的护栏拒绝，

@@ -116,9 +116,18 @@ PY
     printf '%s\n' "同标签 LaunchAgent 不属于本安装，保持不动：${plist}" >&2
     exit 5
   fi
-  launchctl bootout "gui/$(id -u)/$label" >/dev/null 2>&1 || true
-  rm -f "$plist"
-  printf '%s\n' "✓ 已卸载本安装的开机自启：${plist}"
+  # launchd 的 GUI 域按 UID 划分，认不出 HOME：隔离演练里那份 plist 认亲通过之后，
+  # 这一句 bootout 卸掉的仍然是用户真正在用的那个 com.lifeos.node。安装侧同理，
+  # 所以 install_launch_agent.sh 在隔离态下只写 plist 不注册；退役侧必须对称，
+  # 否则一次沙箱演练就会把真实服务停掉，而两边都不会有任何告警。
+  if lifeos_home_is_isolated; then
+    rm -f "$plist"
+    printf '%s\n' "· 隔离运行：已删除副本 plist ${plist}，未执行 bootout（launchd GUI 域无法按 HOME 隔离）。"
+  else
+    launchctl bootout "gui/$(id -u)/$label" >/dev/null 2>&1 || true
+    rm -f "$plist"
+    printf '%s\n' "✓ 已卸载本安装的开机自启：${plist}"
+  fi
 fi
 
 # ── 4. 退役验收：自启移除后端口必须真的空出来，否则本次退役没有完成 ────────────

@@ -26,7 +26,7 @@ from core.httpd import create_server
 from lifeos_node_server import create_application
 
 
-SKILL_SCRIPTS = Path(__file__).resolve().parents[1] / "skills" / "lifeos" / "scripts"
+SKILL_SCRIPTS = Path(__file__).resolve().parents[1] / "skills" / "zzm-lifeos" / "scripts"
 if str(SKILL_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SKILL_SCRIPTS))
 

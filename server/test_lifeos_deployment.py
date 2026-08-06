@@ -707,7 +707,7 @@ class IsolatedDeploymentTests(unittest.TestCase):
         self.assertTrue(requirements.is_file(), "缺少 server/requirements.txt")
         self.assertIn("openpyxl", requirements.read_text(encoding="utf-8"))
         self.assertIn("pip install -r requirements.txt", ci)
-        self.assertIn("skills/lifeos/scripts", ci)
+        self.assertIn("skills/zzm-lifeos/scripts", ci)
 
     def test_release_whitelist_ships_deliverables_without_internal_records(self) -> None:
         listing = subprocess.run(

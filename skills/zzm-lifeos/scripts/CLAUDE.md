@@ -1,4 +1,4 @@
-# skills/lifeos/scripts/
+# skills/zzm-lifeos/scripts/
 > L2 | 父级: ../CLAUDE.md
 
 成员清单

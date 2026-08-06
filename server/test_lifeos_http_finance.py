@@ -573,7 +573,7 @@ class FinanceCommandChainTests(FinanceFixture):
 
     def setUp(self) -> None:
         super().setUp()
-        scripts = Path(__file__).resolve().parent.parent / "skills" / "lifeos" / "scripts"
+        scripts = Path(__file__).resolve().parent.parent / "skills" / "zzm-lifeos" / "scripts"
         if str(scripts) not in sys.path:
             sys.path.insert(0, str(scripts))
         self.isolated_home = Path(self.temp.name) / "home"

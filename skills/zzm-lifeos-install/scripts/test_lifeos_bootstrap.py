@@ -2,7 +2,7 @@
 [INPUT]: 只依赖同目录的 lifeos_bootstrap 与标准库 unittest/tempfile；不发网络、不读真实家目录、不碰任何安装。
 [OUTPUT]: 对外提供引导安装的纯函数金样：地址白名单、Release 附件挑选、校验和解析、压缩包顶层目录、
           安装目标裁定、宿主自动探测、skill 覆盖护栏、health 归属判据与 Token 掩码。
-[POS]: skills/lifeos-install/scripts 的回归底座。锁的是那些「放行一次就无法挽回」的判据——
+[POS]: skills/zzm-lifeos-install/scripts 的回归底座。锁的是那些「放行一次就无法挽回」的判据——
        校验和对不上、压缩包越界、把别人的目录当成升级目标、把别人的 skill 覆盖掉——
        而不是命令行长什么样。副作用四处（下载/解压/部署/子进程）不在此文件覆盖范围内。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

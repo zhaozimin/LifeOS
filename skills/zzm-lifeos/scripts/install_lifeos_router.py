@@ -13,7 +13,10 @@ import re
 from pathlib import Path
 
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
+# 托管块里写死的技能名必须与 SKILL.md 的 name 一致：Hermes 按这个名字去 skill_view，
+# 名字对不上时常驻层每次都在指路一个不存在的技能，而这条错误不会有任何报错浮出来。
+SKILL_NAME = "zzm-lifeos"
 START, END = "<!-- LIFEOS_MANAGED_ROUTER_START -->", "<!-- LIFEOS_MANAGED_ROUTER_END -->"
 OLD_START, OLD_END = "<!-- TIMEOS_MANAGED_ROUTER_START -->", "<!-- TIMEOS_MANAGED_ROUTER_END -->"
 # 托管块的上限行数：Hermes 常驻层越长越容易被模型忽略，deployment.md 把它写成上线闸门之一。
@@ -21,7 +24,7 @@ MAX_MANAGED_LINES = 20
 
 
 def managed_block() -> str:
-    return "\n".join((START, f"LifeOS router v{VERSION}", "活动/时间表达与花了、买了、收到、转账、工资、报销表达都先 skill_view(name=lifeos)。", "时间真实调用 timectl.py；财务真实调用 finctl.py；混合句必须拆两笔。", "逐行原样转达 display；没有 display 视为未成功写入。", "5xx、超时、断连先只读核查，禁止重试。", END))
+    return "\n".join((START, f"LifeOS router v{VERSION}", f"活动/时间表达与花了、买了、收到、转账、工资、报销表达都先 skill_view(name={SKILL_NAME})。", "时间真实调用 timectl.py；财务真实调用 finctl.py；混合句必须拆两笔。", "逐行原样转达 display；没有 display 视为未成功写入。", "5xx、超时、断连先只读核查，禁止重试。", END))
 
 
 def _replace(text: str, start: str, end: str, replacement: str) -> str:

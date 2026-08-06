@@ -15,6 +15,21 @@ port=${LIFEOS_PORT:-59418}
 config="$runtime/config.json"
 pointer="$HOME/.config/lifeos/install.json"
 lifeos_assert_isolated_home || exit 2
+# config 已经存在时，端口的真源是 config 而不是环境变量：写 config 的分支带 `! -f` 条件，
+# 此时给 LIFEOS_PORT 也改不动任何东西。若不在这里对齐，下面的占用检查会去探一个没有任何
+# 服务在听的新端口（探空 → 放行），而真正在跑的服务仍在 config 那个旧端口上，
+# 安装于是"成功"完成，用户却拿到一个连不上的面板地址。
+if [ -f "$config" ]; then
+  existing_port=$(lifeos_config_field "$config" port 2>/dev/null || true)
+  if [ -n "$existing_port" ]; then
+    if [ -n "${LIFEOS_PORT:-}" ] && [ "${LIFEOS_PORT}" != "$existing_port" ]; then
+      printf '%s\n' "本安装的 config.json 已经把端口定在 ${existing_port}，本脚本不会改写它。" >&2
+      printf '%s\n' "要换端口，请改 ${config} 里的 port 后重启服务（connection-info.txt 也要一并重生成）。" >&2
+      exit 2
+    fi
+    port="$existing_port"
+  fi
+fi
 # 两道护栏都必须跑在任何 mkdir/写盘之前：拒绝的那条路径上不能留下半套安装，
 # 否则用户下一次重试会撞见一个「已经有 config 了」的中间态而无从判断该信哪个。
 if lifeos_pointer_targets_other_install "$pointer" "$root"; then

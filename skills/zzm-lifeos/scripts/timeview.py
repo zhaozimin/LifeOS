@@ -2,7 +2,7 @@
 """
 [INPUT]: 依赖 timectl 各写命令构造的回执字典与其中的服务端时段字段（title/startedAt/endedAt/grossMinutes/pureMinutes）；只用标准库，不发网络请求、不读配置、不导入 timeclock 与 lifeconn。
 [OUTPUT]: 对外提供 render(command, receipt) 与 attach_display(command, receipt)（兼容别名 attach），把任意写回执折叠成“上一格 + 当前格”两行成品文本挂在 display 字段上，并提供五个状态符常量；单参数 render 仅为迁移期 timectl 的兼容入口。
-[POS]: skills/lifeos/scripts 的呈现纯函数层，与 timeclock 并列为第二个无副作用层；把回显正确性从提示词下沉到代码，让 Agent 只需转达而不必组织语言。渲染中的任何意外一律降级为不给 display，绝不把已落库的写入反报为失败。
+[POS]: skills/zzm-lifeos/scripts 的呈现纯函数层，与 timeclock 并列为第二个无副作用层；把回显正确性从提示词下沉到代码，让 Agent 只需转达而不必组织语言。渲染中的任何意外一律降级为不给 display，绝不把已落库的写入反报为失败。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
 

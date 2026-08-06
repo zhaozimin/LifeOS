@@ -1,7 +1,7 @@
 """
 [INPUT]: 依赖 unittest.mock 模拟 lifeconn 的受限 HTTP 连接，不读取本机安装指针或真实账本。
 [OUTPUT]: 锁定列表型只读回执与非法标量回执的传输边界。
-[POS]: skills/lifeos/scripts 的连接层回归金样，与 test_time_skill 的纯函数金样互补。
+[POS]: skills/zzm-lifeos/scripts 的连接层回归金样，与 test_time_skill 的纯函数金样互补。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
 

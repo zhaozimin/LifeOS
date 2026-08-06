@@ -2,7 +2,7 @@
 """
 [INPUT]: 依赖同目录 timeclock.py 与 timeview.py；只构造内存回执，不读取安装指针、不发网络、不触及任何 runtime。
 [OUTPUT]: 提供时间 Skill 纯函数金样，锁定钟点解析、写入护栏、五态回执与渲染降级纪律。
-[POS]: skills/lifeos/scripts 的隔离回归入口；与 HTTP/CLI 联调互补，证明时间裁定和 display 可独立于真实账本复跑。
+[POS]: skills/zzm-lifeos/scripts 的隔离回归入口；与 HTTP/CLI 联调互补，证明时间裁定和 display 可独立于真实账本复跑。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
 

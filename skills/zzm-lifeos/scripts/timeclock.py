@@ -2,7 +2,7 @@
 """
 [INPUT]: 只依赖标准库 re/datetime；业务当前分钟由调用方从 LifeOS health 冻结后传入，本模块不发起任何网络请求。
 [OUTPUT]: 对外提供 LifeOSTimeError（兼容导出 TimeOSError）、带 0–400 天回溯边界的 HH:MM 与完整分钟解析（resolve_minute/require_full_minute）、业务日期核对、切换边界无缝断言与进行中段写入年龄计算。
-[POS]: skills/lifeos/scripts 的时间领域纯函数层，被 timectl.py 消费；把“哪个钟点属于哪一天”的裁定权从 Agent 收归代码，歧义一律硬失败而非猜测。
+[POS]: skills/zzm-lifeos/scripts 的时间领域纯函数层，被 timectl.py 消费；把“哪个钟点属于哪一天”的裁定权从 Agent 收归代码，歧义一律硬失败而非猜测。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
 
