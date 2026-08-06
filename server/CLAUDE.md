@@ -20,7 +20,7 @@ test_time_domain.py / test_lifeos_http_time.py: 时间域纯规则金样与随�
 test_finance_domain.py / test_lifeos_http_finance.py: 财务算法、边缘端点和随机端口 HTTP 回归；前者含 XLSX 导出前的公式钉死（明细与税务两表、= + - @ 四种前缀），后者含新建路径 90 秒重复闸的六条判据；包含完整账目前后版本链、单币种/周期暂停 MVP 闸、更新路径、导入 commit、双账本互不阻塞、账户改名传播、余额调整补差、类别扩展字段留存与大体积附件的变异锁。
 test_finance_attachment_upload.py: 附件上传的落盘副作用回归；404 的上传必须寸土不动，正常上传的目录/文件/索引行三者齐备。
 _lifeos_test_support.py: 部署套件三份用例的共享底座；仓库路径、受保护端口、一次性回环端口分配与套件源码清单只在此定义一次。下划线开头，因此不被 `unittest discover` 当成用例。
-test_lifeos_deployment.py: 安装与发布门禁；空 Token 拒启、端口被无法认亲者占用即拒装、指针指向别处即拒装、SETUP_ONLY 备料不启动且当面交付面板地址、LaunchAgent 的 XML 转义/解释器固化/fail-closed 清理、原子写入中间态的 .gitignore 覆盖、按 VERSION 命名的发布物与校验和、引导 skill 小包、ZIP 私货扫描、CI 端口纪律步骤的存在。
+test_lifeos_deployment.py: 安装与发布门禁；空 Token 拒启、端口被无法认亲者占用即拒装、指针指向别处即拒装、SETUP_ONLY 备料不启动且当面交付面板地址、LaunchAgent 的 XML 转义/解释器固化/fail-closed 清理、原子写入中间态的 .gitignore 覆盖、按 VERSION 命名的发布物与校验和、引导 skill 小包、ZIP 私货扫描、CI 端口纪律步骤的存在。单文件 ≤800 行铁律的棘轮闸也在此：三处历史越界按当前行数钉死，不许新增越界文件、已越界的只能降不能升，降到线内后从 GRANDFATHERED 删除即自动收紧——此前这条纪律是唯一没有闸的一条，靠人工记忆守了三个阶段，漏了两次。
 test_lifeos_skill_golden.py: Skill 契约金样；SOUL 托管块三态与撑大拒绝、时间/账务 display 符号字典、lifeconn 白名单与结果未知矩阵、双 ctl 全命令面护栏，全部对回环替身运行。
 test_lifeos_migration_rehearsal.py: 迁移与回滚回归；合成双账本三锚差异后由快照恢复、演练器拒绝非夹具路径、同一封存夹具可被反复演练。
 

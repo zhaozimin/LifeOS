@@ -690,6 +690,56 @@ class IsolatedDeploymentTests(unittest.TestCase):
             "已提交的面板产物不是由当前 src/ 构建的：请在 server/web-dashboard 执行 npm run build 并提交 server/web/",
         )
 
+    def test_single_file_line_limit_never_drifts(self) -> None:
+        """单文件 ≤800 行是工程铁律，但此前它是唯一一条没有闸的纪律。
+
+        同级别的其它纪律都装了变异锁（@ts-nocheck 禁令、产物指纹、端口纪律、发布私货扫描），
+        唯独行数靠某个人某天记得数一遍。结果是 P11 自陈越界未修、P17 拆到 817 仍越界、
+        P18 却宣布「0 处越界」，此后又静默漂移到三处——规则形同虚设。
+
+        三处历史越界用棘轮锁住：不许新增越界文件，已越界的只能降不能升。
+        降到线内后把它从 GRANDFATHERED 里删掉，闸自然收紧一格。整改本身排在
+        发布测试窗口之后——update_configuration 是全仓唯一整表重灌的路径，
+        它身上压着四道用事故换来的闸，不该在用户正要往活账本写第一笔时动。
+        """
+        limit = 800
+        grandfathered = {
+            "skills/zzm-lifeos-install/scripts/lifeos_bootstrap.py": 899,
+            "server/domains/finance/service.py": 872,
+            "server/test_lifeos_deployment.py": 867,
+        }
+        roots = (REPOSITORY_ROOT / "server", REPOSITORY_ROOT / "skills")
+        skip = ("node_modules", "__pycache__", "/web/", "/dist/")
+        offenders: dict[str, int] = {}
+        for root in roots:
+            for path in root.rglob("*.py"):
+                relative = path.relative_to(REPOSITORY_ROOT).as_posix()
+                if any(fragment in f"/{relative}" for fragment in skip):
+                    continue
+                lines = len(path.read_text(encoding="utf-8").splitlines())
+                if lines > limit:
+                    offenders[relative] = lines
+
+        for relative, lines in sorted(offenders.items()):
+            with self.subTest(file=relative):
+                ceiling = grandfathered.get(relative)
+                self.assertIsNotNone(
+                    ceiling,
+                    f"{relative} 有 {lines} 行，超出 ≤{limit} 行铁律。请拆分；"
+                    f"确需暂缓的，连同理由一起写进本用例的 GRANDFATHERED。",
+                )
+                self.assertLessEqual(
+                    lines, ceiling,
+                    f"{relative} 从 {ceiling} 涨到 {lines} 行。已越界的文件只能降不能升——"
+                    f"新增的逻辑请拆到新模块，不要往这里堆。",
+                )
+        for relative, ceiling in grandfathered.items():
+            with self.subTest(file=relative, cleared=True):
+                self.assertIn(
+                    relative, offenders,
+                    f"{relative} 已降到 {limit} 行以内，请把它从 GRANDFATHERED 中删除，让闸收紧一格。",
+                )
+
     def test_ci_installs_the_declared_dependency_and_runs_skill_tests(self) -> None:
         """CI 必须真的安装唯一 pip 依赖，并真的跑 skills 下的测试。
 

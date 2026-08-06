@@ -1,8 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="LifeOS">
-  <rect width="512" height="512" rx="112" fill="#c96442"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#c96442"/>
+  <g transform="translate(256 256) scale(0.72) translate(-256 -256)">
   <circle cx="220" cy="220" r="140" fill="none" stroke="#fffaf2" stroke-width="46"/>
   <path d="M220 138v82l58 34" fill="none" stroke="#fffaf2" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
   <circle cx="382" cy="382" r="122" fill="#c96442"/>
   <circle cx="382" cy="382" r="98" fill="#fffaf2"/>
   <path d="M347 342l35 40 35-40M382 380v62M354 396h56M354 420h56" fill="none" stroke="#c96442" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
 </svg>

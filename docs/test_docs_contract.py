@@ -218,6 +218,26 @@ class BilingualReadmesStayInSync(unittest.TestCase):
                 self.assertIn("zzm-lifeos-install", text)
                 self.assertNotRegex(text, r"skills/lifeos-install|~/\.claude/skills/lifeos\b")
 
+    def test_no_manual_still_teaches_the_pre_rename_skill_directory(self):
+        """技能改名后，手册里任何一处旧目录名都会让用户在解压目录里找一个不存在的文件夹。
+
+        改名那一轮三份对外文案改了两份，漏的正是《安装指南》标为「推荐」的路径第一步——
+        而那段提示词还写着「不要自己猜着改」，于是用户的第一次交互就落在一个死命令上。
+        判据取自 make_release.sh 实际打包的目录名，不是取自记忆。
+        """
+        release = (ROOT / "make_release.sh").read_text(encoding="utf-8")
+        match = re.search(r'^skill_name="([^"]+)"', release, re.MULTILINE)
+        self.assertIsNotNone(match, "make_release.sh 里找不到引导技能的目录名")
+        packaged = match.group(1)
+        for path in USER_DOCS:
+            text = read(path)
+            with self.subTest(doc=path.name):
+                # 剔除发布物文件名（lifeos-install-skill-<版本>.zip）后再找裸目录名
+                stripped = re.sub(r"lifeos-install-skill-[0-9.]+\.zip(\.sha256)?", "", text)
+                stale = [line.strip() for line in stripped.splitlines()
+                         if re.search(r"(?<!zzm-)\blifeos-install\b", line)]
+                self.assertEqual(stale, [], f"手册仍在教改名前的目录名，实际打包为 {packaged}")
+
     def test_selfcheck_commands_point_at_real_test_roots(self):
         """README 教读者自己跑一遍回归。目录写错，第一条命令就 No such file——而这恰是
         怀疑者验证「263 项通过」这类断言的唯一入口，错在这里比错在别处更伤信任。"""
