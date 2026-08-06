@@ -277,6 +277,46 @@ class SkillGoldenTests(unittest.TestCase):
             self.assertEqual(finview.render({**base, "reimbursementStatus": pending}), "✓ ¥12.50 午餐 ⚑")
         self.assertEqual(finview.render({**base, "reimbursementStatus": "reimbursed"}), "✓ ¥12.50 午餐 ✓⚑")
 
+    def test_finview_line_carries_the_two_fields_the_user_must_be_able_to_veto(self) -> None:
+        """账务行必须印出账户与分类——它们是最容易被推断错、又最该被一眼否决的两个字段。
+
+        分类归错了统计会偏，账户记错了余额会偏，两者当时不说、事后都要靠对账才发现，
+        而对账时已经隔了很多笔。回执把它们摆出来，用户扫一眼就能当场纠正。
+        转账必须画出两端：它唯一的风险是方向记反，只印一个账户名看不出转出还是转入。
+        字段名取自 store.row_to_transaction 的真实投影，不是记忆。
+        """
+        spend = {"id": "tx-2", "title": "打车", "amount": 25.0, "kind": "expense",
+                 "accountName": "微信支付", "category": {"name": "交通"},
+                 "reimbursementStatus": "notApplicable", "deletedAt": None}
+        self.assertEqual(finview.render(spend), "✓ ¥25.00 打车 · 微信支付 · 交通")
+
+        transfer = {"id": "tx-3", "title": "还信用卡", "amount": 3000.0, "kind": "transfer",
+                    "accountName": "工资卡", "fromAccountName": "工资卡", "toAccountName": "招商信用卡",
+                    "category": {"name": "转账"}, "reimbursementStatus": "notApplicable", "deletedAt": None}
+        self.assertEqual(finview.render(transfer), "⇄ ¥3000.00 还信用卡 · 工资卡→招商信用卡 · 转账")
+
+        # 兜底分类同样要印出来——它正是用户最该看见并纠正的那一种。
+        fallback = {**spend, "title": "陪孩子写作业", "amount": 50.0, "category": {"name": "未分类"}}
+        self.assertEqual(finview.render(fallback), "✓ ¥50.00 陪孩子写作业 · 微信支付 · 未分类")
+
+        # 报销标记留在整行末尾，不被新字段挤走。
+        self.assertEqual(
+            finview.render({**spend, "reimbursementStatus": "submitted"}),
+            "✓ ¥25.00 打车 · 微信支付 · 交通 ⚑",
+        )
+        # 缺字段就省略该段，绝不印占位符——半条信息比没有信息更容易误导。
+        self.assertEqual(finview.render({**spend, "category": None}), "✓ ¥25.00 打车 · 微信支付")
+        self.assertEqual(finview.render({**spend, "accountName": None}), "✓ ¥25.00 打车 · 交通")
+        # 账务行永远带 ¥，时间行永远不带——两域字典分立的底线。
+        self.assertIn("¥", finview.render(spend))
+
+    def test_finview_voided_and_aggregate_receipts(self) -> None:
+        """作废优先级与非交易体回执；与上一条金样共用同一份服务端真实字段。"""
+        base = {
+            "id": "tx-1", "title": "午餐", "amount": 12.5, "kind": "expense",
+            "createdAt": "2026-08-01T09:00:00Z", "updatedAt": "2026-08-01T09:00:00Z",
+            "reimbursementStatus": "notApplicable", "deletedAt": None,
+        }
         # 已作废优先于转账：这一格错过一次，用户就会以为转账成功了。
         voided_transfer = {**base, "kind": "transfer", "deletedAt": "2026-08-01T11:00:00Z"}
         self.assertEqual(finview.render(voided_transfer), "✗ ¥12.50 午餐")

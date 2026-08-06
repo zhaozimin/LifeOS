@@ -51,10 +51,42 @@ def _symbol(transaction: dict[str, Any]) -> str:
     return SYMBOL_BOOKED
 
 
+_SEP = " · "  # 与时间行同一个分隔符：两域回执并排出现时读起来是一套东西
+
+
+def _category_name(transaction: dict[str, Any]) -> str:
+    """category 可能是 {name}、{id,name} 或历史遗留的裸字符串，三种都要认。"""
+    category = transaction.get("category")
+    if isinstance(category, dict):
+        return str(category.get("name") or "").strip()
+    return str(category or "").strip()
+
+
+def _money_flow(transaction: dict[str, Any]) -> str:
+    """钱从哪来到哪去。
+
+    转账必须画出两端——它唯一的风险就是方向记反，而只印一个账户名时用户看不出
+    是转出还是转入。支出/收入各只有一端，印那一端即可。
+    """
+    source = str(transaction.get("fromAccountName") or "").strip()
+    target = str(transaction.get("toAccountName") or "").strip()
+    if transaction.get("kind") == "transfer" and source and target:
+        return f"{source}→{target}"
+    return str(transaction.get("accountName") or source or target or "").strip()
+
+
 def _line(transaction: dict[str, Any]) -> str:
+    """一行说清：多少钱、什么事、走哪个账户、归了哪一类。
+
+    账户与分类此前不在回执里，而它们恰恰是最容易被 Agent 推断错、又最需要用户
+    扫一眼就能否决的两个字段——分类归错了统计会偏，账户记错了余额会偏，两者
+    当时不说，事后都要靠对账才发现。缺字段就省略该段，绝不印占位符。
+    """
     amount = float(transaction.get("amount") or 0)
     title = str(transaction.get("title") or "").strip()
-    return f"{_symbol(transaction)} ¥{amount:.2f} {title}{_reimbursement_mark(transaction)}".strip()
+    head = f"{_symbol(transaction)} ¥{amount:.2f} {title}".strip()
+    parts = [head] + [value for value in (_money_flow(transaction), _category_name(transaction)) if value]
+    return _SEP.join(parts) + _reimbursement_mark(transaction)
 
 
 def _looks_like_transaction(value: object) -> bool:

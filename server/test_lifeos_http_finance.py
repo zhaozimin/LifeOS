@@ -613,7 +613,8 @@ class FinanceCommandChainTests(FinanceFixture):
         spend = self.payload_file("spend.json", {"accountName": "微信支付", "category": {"name": "餐饮"}})
         code, receipt = self.run_finctl("expense", "--title", "午饭", "--amount", "38", "--payload-file", spend)
         self.assertEqual(code, 0)
-        self.assertEqual(receipt["display"], "✓ ¥38.00 午饭")
+        self.assertEqual(receipt["display"], "✓ ¥38.00 午饭 · 微信支付 · 餐饮",
+                         "回执必须印出账户与分类——用户扫一眼就能否决推断错的那两个字段")
 
     def test_unknown_account_is_refused_before_the_packet_leaves(self) -> None:
         """主数据护栏：未知账户必须在本地被拒，不发包。"""
@@ -633,11 +634,11 @@ class FinanceCommandChainTests(FinanceFixture):
 
         code, corrected = self.run_finctl("correct", "--id", created["id"], "--payload-file", str(payload))
         self.assertEqual(code, 0)
-        self.assertEqual(corrected["display"], "↻ ¥45.00 打车")
+        self.assertEqual(corrected["display"], "↻ ¥45.00 打车 · 微信支付 · 餐饮")
 
         code, voided = self.run_finctl("void", "--id", created["id"], "--reason", "记错了")
         self.assertEqual(code, 0)
-        self.assertEqual(voided["display"], "✗ ¥45.00 打车")
+        self.assertEqual(voided["display"], "✗ ¥45.00 打车 · 微信支付 · 餐饮")
 
     def test_voided_transfer_is_not_rendered_as_a_successful_transfer(self) -> None:
         """这条曾经是错的：撤销掉的转账显示 ⇄，与成功的转账一字不差。"""
@@ -652,10 +653,13 @@ class FinanceCommandChainTests(FinanceFixture):
         _, created = self.run_finctl(
             "transfer", "--title", "还信用卡", "--amount", "3000", "--payload-file", transfer
         )
-        self.assertEqual(created["display"], "⇄ ¥3000.00 还信用卡")
+        self.assertEqual(created["display"],
+                         f"⇄ ¥3000.00 还信用卡 · {accounts[0]}→{accounts[1]} · {category}",
+                         "转账必须画出两端方向——只印一个账户名看不出是转出还是转入")
 
         _, voided = self.run_finctl("void", "--id", created["id"], "--reason", "转错了")
-        self.assertEqual(voided["display"], "✗ ¥3000.00 还信用卡")
+        self.assertEqual(voided["display"],
+                         f"✗ ¥3000.00 还信用卡 · {accounts[0]}→{accounts[1]} · {category}")
 
     def test_cross_domain_write_is_refused_before_the_packet_leaves(self) -> None:
         code, payload = self.run_finctl("request", "POST", "/v1/time/segments")
