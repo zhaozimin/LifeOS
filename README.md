@@ -10,7 +10,7 @@
   <img alt="Platform: macOS" src="https://img.shields.io/badge/platform-macOS-c96442">
   <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9%2B-c96442">
   <img alt="No cloud" src="https://img.shields.io/badge/cloud-none-3ED395">
-  <img alt="263 tests" src="https://img.shields.io/badge/tests-263%20passing-3ED395">
+  <img alt="267 tests" src="https://img.shields.io/badge/tests-267%20passing-3ED395">
 </p>
 
 <p align="center">
@@ -171,7 +171,14 @@ flowchart TB
 
 > **Read [备份与恢复](docs/备份与恢复.md) before you come to rely on this.** There is no one-click restore in this version — backup is on you, and copying the wrong file loses data (the ledgers run in WAL mode, so the `.sqlite3` file alone is not the whole story).
 
-Verify a checkout yourself: `cd server && python3 -m unittest discover -v` — 263 tests, no network, nothing written outside temp directories.
+Verify a checkout yourself — no network, nothing written outside temp directories:
+
+```bash
+cd server              && python3 -m unittest discover        # 201 — server, both domains, deployment gate
+cd docs                && python3 -m unittest test_docs_contract          #  24 — the manuals match the code
+cd skills/zzm-lifeos/scripts        && python3 -m unittest discover       #  12 — skill pure functions
+cd skills/zzm-lifeos-install/scripts && python3 -m unittest discover      #  30 — installer verdicts
+```
 
 ## License & disclaimer
 

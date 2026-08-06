@@ -218,6 +218,14 @@ class BilingualReadmesStayInSync(unittest.TestCase):
                 self.assertIn("zzm-lifeos-install", text)
                 self.assertNotRegex(text, r"skills/lifeos-install|~/\.claude/skills/lifeos\b")
 
+    def test_selfcheck_commands_point_at_real_test_roots(self):
+        """README 教读者自己跑一遍回归。目录写错，第一条命令就 No such file——而这恰是
+        怀疑者验证「263 项通过」这类断言的唯一入口，错在这里比错在别处更伤信任。"""
+        for name, text in self.pair.items():
+            for relative in re.findall(r"cd (skills/[A-Za-z0-9_./-]+|server|docs)\s+&&", text):
+                with self.subTest(doc=name, path=relative):
+                    self.assertTrue((ROOT / relative).is_dir(), f"README 让读者 cd 进不存在的目录：{relative}")
+
     def test_both_link_to_each_other_and_to_existing_assets(self):
         self.assertIn("README.zh-CN.md", self.pair["README.md"], "英文 README 没有给出中文版入口")
         self.assertIn("README.md", self.pair["README.zh-CN.md"], "中文 README 没有给出英文版入口")
