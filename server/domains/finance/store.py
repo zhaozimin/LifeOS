@@ -79,6 +79,28 @@ def seed_default_master_data_in_connection(connection: sqlite3.Connection) -> No
         connection.executemany("INSERT INTO accounts (id,payload_json,sort_order,updated_at) VALUES (?,?,?,?)", [(item["id"], json.dumps(item, ensure_ascii=False), i, now) for i, item in enumerate(default_accounts())])
     if connection.execute("SELECT COUNT(*) AS count FROM ledger_settings").fetchone()["count"] == 0:
         connection.execute("INSERT INTO ledger_settings (id,payload_json,updated_at) VALUES (1,?,?)", (json.dumps(default_ledger_settings(), ensure_ascii=False), now))
+    ensure_fallback_category_in_connection(connection, now)
+
+
+def ensure_fallback_category_in_connection(connection: sqlite3.Connection, now: "str | None" = None) -> None:
+    """保证兜底分类「未分类」始终存在——它是通道而不是用户数据。
+
+    上面三段只在表为空时补种，所以在此之前建立的账本永远等不到新增的默认项。而 service 的
+    行构造与分类归一都以「未分类」为缺省：它缺席时，一笔归不进任何现有分类的消费无论传不传
+    category 都会撞上 unknown_master_data 而写不进去——用户说了一句话，账本却什么都没记。
+
+    只补这一条，且按名字判存（用户可能自己建过同名的，那就用他的）。其余分类仍然遵守
+    「AI 不得静默创建主数据」：这一条不是 AI 想建的，是系统在保证兜底通道可用。
+    """
+    stamp = now or utc_now_iso()
+    existing = {str(item.get("name") or "").strip() for item in list_categories(connection)}
+    for item in default_categories():
+        if item.get("name") == "未分类" and "未分类" not in existing:
+            order = (connection.execute("SELECT COALESCE(MAX(sort_order), -1) AS top FROM categories").fetchone()["top"]) + 1
+            connection.execute(
+                "INSERT OR IGNORE INTO categories (id,payload_json,sort_order,updated_at) VALUES (?,?,?,?)",
+                (item["id"], json.dumps(item, ensure_ascii=False), order, stamp),
+            )
 
 
 def list_categories(connection: sqlite3.Connection) -> list[dict[str, Any]]:

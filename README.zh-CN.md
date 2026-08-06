@@ -10,7 +10,7 @@
   <img alt="Platform: macOS" src="https://img.shields.io/badge/平台-macOS-c96442">
   <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9%2B-c96442">
   <img alt="No cloud" src="https://img.shields.io/badge/云端-没有-3ED395">
-  <img alt="269 tests" src="https://img.shields.io/badge/回归-269%20项通过-3ED395">
+  <img alt="270 tests" src="https://img.shields.io/badge/回归-270%20项通过-3ED395">
 </p>
 
 <p align="center">
@@ -184,7 +184,7 @@ flowchart TB
 想自己验一遍代码——不发网络请求，也不往临时目录外写任何东西：
 
 ```bash
-cd server              && python3 -m unittest discover        # 202 项：服务端、两个领域、部署门禁
+cd server              && python3 -m unittest discover        # 203 项：服务端、两个领域、部署门禁
 cd docs                && python3 -m unittest test_docs_contract          #  25 项：手册与代码一致
 cd skills/zzm-lifeos/scripts        && python3 -m unittest discover       #  12 项：技能纯函数
 cd skills/zzm-lifeos-install/scripts && python3 -m unittest discover      #  30 项：安装器判据

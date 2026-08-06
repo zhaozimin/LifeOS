@@ -51,6 +51,11 @@ def default_categories() -> list[dict[str, Any]]:
         ("redpacket", "红包", "gift.fill", "#37B24D", "收入", ["红包", "收红包", "转账收款", "收款"]),
         ("other-income", "其他收入", "plus.circle.fill", "#1C7ED6", "收入", ["收入", "报销到账", "退款", "利息", "返现"]),
         ("transfer", "转账", "arrow.left.arrow.right.square.fill", "#546E7A", "支出", ["转账", "转入", "转出"]),
+        # 兜底分类，必须存在：service.py 的行构造与分类归一（:202、:464）都以「未分类」为缺省，
+        # 而它此前不在默认清单里——于是一笔归不进上面任何一类的消费，无论 Agent 传「未分类」
+        # 还是干脆不传 category，都会撞上 unknown_master_data 而写不进去。用户说一句话就该记上，
+        # 不该因为分类不够用而失败；关键词留空，避免它把本该落到具体分类的记录抢过来。
+        ("uncategorized", "未分类", "tray", "#607D8B", "支出", []),
     )
     out: list[dict[str, Any]] = []
     for suffix, name, image, color, direction, keywords in entries:

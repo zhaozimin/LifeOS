@@ -749,5 +749,39 @@ class FinanceDomainTests(unittest.TestCase):
         metadata, body = service.read_attachment(self.ledger, "legacy-attachment")
         self.assertEqual((metadata["mime"], body), ("text/plain", b"legacy-proof"))
 
+    def test_uncategorized_is_always_writable_even_on_a_legacy_ledger(self) -> None:
+        """归不进任何现有分类的一笔，必须仍然记得上——这是「用户说了就该记上」的底线。
+
+        「未分类」是 service 行构造与分类归一的缺省值，却一度不在默认清单里：于是一笔
+        归不进现有分类的消费，无论 Agent 传「未分类」还是干脆不传 category，都会撞上
+        unknown_master_data 被拒——用户说了一句话，账本什么都没记，而这恰恰是新账本
+        分类还不够用时最常发生的情形。
+
+        兜底通道的可用性不能只靠提示词守：提示词改一句就没了，而这条闸改坏会立刻变红。
+        """
+        names = [item["name"] for item in service.configuration(self.ledger)["categories"]]
+        self.assertIn("未分类", names, "默认分类里必须有兜底项，否则 Agent 无路可走")
+
+        explicit = self.transaction(title="陪孩子写作业", category={"name": "未分类"})
+        self.assertEqual(explicit["category"]["name"], "未分类")
+        implicit = self.transaction(title="说不清是什么", category=None)
+        self.assertEqual(implicit["category"]["name"], "未分类", "不传 category 也必须落到兜底分类")
+
+        # 老账本：建库之后才新增的默认项，此前的账本永远等不到——启动时必须补回。
+        with self.ledger.write_transaction() as connection:
+            connection.execute("DELETE FROM categories WHERE json_extract(payload_json,'$.name')='未分类'")
+        self.assertNotIn("未分类", [i["name"] for i in service.configuration(self.ledger)["categories"]])
+        service.ensure_schema(self.ledger)
+        restored = [i["name"] for i in service.configuration(self.ledger)["categories"]]
+        self.assertIn("未分类", restored, "已有账本重启后必须补回兜底分类")
+
+        before = len(restored)
+        for _ in range(3):
+            service.ensure_schema(self.ledger)
+        self.assertEqual(
+            len(service.configuration(self.ledger)["categories"]), before,
+            "补种必须幂等——每次启动都插一条会把用户的分类列表撑爆",
+        )
+
 
 if __name__ == "__main__": unittest.main()
