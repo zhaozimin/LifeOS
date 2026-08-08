@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 finance 交易、分类、账户主数据、双视图筛选与 views 的本位币换算原语。
-[OUTPUT]: 对外提供月度汇总、预算双键、0.98^days 习惯投影及 dashboard 聚合。
+[OUTPUT]: 对外提供月度汇总、预算双键、基于全部历史的 0.98^days 习惯投影及 dashboard 聚合。
 [POS]: finance 的只读报告层；所有跨账户聚合一律以本位币结算，不触发周期记账，
        E9 由 service/routes 在唯一允许点调用。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -83,7 +83,7 @@ def budget_status(connection: sqlite3.Connection, month: str | None) -> dict[str
 
 
 def habits(connection: sqlite3.Connection, phrase: str, category: str) -> dict[str, Any]:
-    rows = connection.execute("SELECT title,merchant,note,category_json,account_name,project_name,source_name,reimbursement_status,occurred_at FROM transactions WHERE deleted_at IS NULL AND source!='adjustment' ORDER BY occurred_at DESC LIMIT 500").fetchall()
+    rows = connection.execute("SELECT title,merchant,note,category_json,account_name,project_name,source_name,reimbursement_status,occurred_at FROM transactions WHERE deleted_at IS NULL AND source!='adjustment' ORDER BY occurred_at DESC").fetchall()
     now = datetime.now(timezone.utc)
     def aggregate(matches: list[tuple[sqlite3.Row, float, str]]) -> dict[str, Any]:
         dimensions: dict[str, dict[str, dict[str, Any]]] = {key: {} for key in ("account", "project", "source", "category", "reimbursement")}

@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 core.httpd 的声明式 Route/Request/Response 和 time.service 的单账本领域操作。
-[OUTPUT]: 对外提供时间域完整 ROUTES 契约，以及由该契约驱动装配 `/v1/time/*`
+[OUTPUT]: 对外提供时间域完整 ROUTES 契约，修改历史默认完整返回，以及由契约驱动装配 `/v1/time/*`
            handler 的 build_routes；契约与实现漂移即启动失败。
 [POS]: time API 的唯一端点真源；timectl 和前端 time API 都必须按此表对拍，不存在 `/v1/clock`。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -87,9 +87,9 @@ def build_routes(ledger: Ledger, config: dict[str, Any]) -> tuple[Route, ...]:
         return Response.json(200, service.agent_operation(ledger, _body(request)))
 
     def audit_events(request: Request) -> Response:
-        raw_limit = _first(_query(request), "limit") or "100"
-        try: limit = int(raw_limit)
-        except ValueError: limit = 100
+        raw_limit = _first(_query(request), "limit")
+        try: limit = int(raw_limit) if raw_limit is not None else None
+        except ValueError: limit = None
         return Response.json(200, service.audit_events(ledger, limit))  # type: ignore[arg-type]
 
     handlers = {

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 finApi 的只读主数据/流水请求与 GlobalSearchPalette 的交互显示。
+ * [INPUT]: 依赖 finApi 的只读主数据/全量流水请求与 GlobalSearchPalette 的交互显示。
  * [OUTPUT]: 仅在用户打开 ⌘K 时加载财务搜索语料并渲染原有命令面板。
  * [POS]: fin 域的按需搜索适配层，避免统一 shell 在常驻状态预取任何业务数据。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -17,7 +17,7 @@ export function FinSearchPalette({ open, onClose }: { open: boolean; onClose: ()
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    void Promise.all([finApi.listTransactions({ limit: 2000 }), finApi.configuration()]).then(([nextTransactions, nextConfiguration]) => {
+    void Promise.all([finApi.listTransactions(), finApi.configuration()]).then(([nextTransactions, nextConfiguration]) => {
       if (!alive) return;
       setTransactions(nextTransactions);
       setConfiguration(nextConfiguration);

@@ -1,9 +1,9 @@
 /**
  * [INPUT]: 依赖 src/fin/lib/timeRange.ts 的区间键编解码与边界推导、src/fin/lib/reimbursement.ts 的报销状态语义、
- *   src/fin/lib/financeAnalytics.ts 的余额聚合/桑基模型/全量取数上限、src/fin/store/timeRange.ts 的区间归一规则，
- *   并以 node:fs 读取四个财务页与时间范围选择器的源码，校验只存在于 tsx 里的取数接线。
+ *   src/fin/lib/financeAnalytics.ts 的余额聚合/桑基模型、src/fin/store/timeRange.ts 的区间归一规则，
+ *   并以 node:fs 读取财务页、抽屉与时间范围选择器的源码，校验只存在于 tsx 里的取数接线。
  * [OUTPUT]: 提供跨月/跨年/单日区间边界、报销状态迁移不变式、软删除账户聚合、桑基连线还原、
- *   区间显示与过滤同源、全量取数上限、刷新信号接线与 MVP 暂停入口的 Node 回归测试。
+ *   区间显示与过滤同源、全历史无上限取数、刷新信号接线与 MVP 暂停入口的 Node 回归测试。
  * [POS]: web-dashboard 的财务纯函数变异锁；直接 import 真实实现，
  *   任何对月末推导、ISO 周起点、闭区间判定、「已驳回仍计入待回款」、桑基连线编码或取数口径的改动都必须在此显形。
  *   少数接线只存在于 .tsx（node --test 无法 import JSX），这类断言退化为对真实源码文本的结构检查，
@@ -33,9 +33,7 @@ import {
   isReimbursementIncome,
 } from "./src/fin/lib/reimbursement.ts";
 import {
-  FULL_LEDGER_LIMIT,
   accountBalance,
-  averageMonthlyExpense,
   buildSankey,
   filterTransactions,
   totalAssets,
@@ -280,30 +278,6 @@ test("时间区间下拉显示哪个桶，页面就必须拿哪个桶过滤", ()
   assert.equal(reconcileBucket("week", "2026-W01", weekBuckets), weekBuckets[0].value);
 });
 
-test("取数上限必须覆盖整本账：服务端按 occurred_at DESC 切片后不许丢月份", () => {
-  // 事故形态：资金流页取 limit=3000，服务端排序后切片给的是「最近 3000 条」的头部，
-  // 更早的账整体不进页面：桑基缺早期路径、可支撑月数偏差、早期月份从下拉里消失，
-  // 用户会以为那些月份根本没有账——而页面还标称「全部时间」。
-  const ledger = [];
-  for (let month = 1; month <= 12; month += 1) {
-    for (let index = 0; index < 300; index += 1) {
-      const day = String((index % 28) + 1).padStart(2, "0");
-      const row = expense(`2026-${String(month).padStart(2, "0")}-${day}T10:00:00`);
-      ledger.push({ ...row, id: `${month}-${index}` });
-    }
-  }
-  ledger.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
-  const served = ledger.slice(0, FULL_LEDGER_LIMIT);
-
-  assert.equal(served.length, 3600, "取数上限把一本 3600 条的账截断了");
-  assert.deepEqual(
-    deriveBuckets(served, "month").map((option) => option.value),
-    deriveBuckets(ledger, "month").map((option) => option.value),
-    "截断后可选月份变少：早期月份会从时间范围栏里消失",
-  );
-  assert.equal(averageMonthlyExpense(served), averageMonthlyExpense(ledger));
-});
-
 // ── 以下为源码结构断言 ────────────────────────────────────────────────
 // 这几处接线只存在于 .tsx 里，而 node --test 无法 import JSX（Unknown file extension ".tsx"）。
 // 与其不锁，不如按真实源码文本锁死：改坏页面接线，这里同样会红。
@@ -371,11 +345,18 @@ test("源码结构：刷新信号的生产侧必须真的随点击变化，不�
     "Provider 必须包住 <Outlet/>，否则财务页取不到信号");
 });
 
-test("源码结构：财务页取流水一律走 FULL_LEDGER_LIMIT，不留分页魔法数字", () => {
-  for (const page of ["OverviewPage.tsx", "LedgerPage.tsx", "FlowPage.tsx"]) {
-    const source = pageSource(page);
-    assert.ok(source.includes("limit: FULL_LEDGER_LIMIT"), `${page} 没有使用共享的全量取数上限`);
-    assert.ok(!/limit: \d/.test(source), `${page} 又写回了硬编码的分页上限`);
+test("源码结构：所有财务历史视图取整本账，不设 limit", () => {
+  for (const relative of [
+    "pages/OverviewPage.tsx",
+    "pages/LedgerPage.tsx",
+    "pages/FlowPage.tsx",
+    "components/ProjectPLDrawer.tsx",
+    "components/AdjustmentHistoryDrawer.tsx",
+    "components/FinSearchPalette.tsx",
+    "pages/settings/categories.tsx",
+  ]) {
+    const source = readFileSync(new URL(`./src/fin/${relative}`, import.meta.url), "utf8");
+    assert.doesNotMatch(source, /listTransactions\s*\(\s*\{[^}]*\blimit\s*:/s, `${relative} 会截断早期流水`);
   }
 });
 

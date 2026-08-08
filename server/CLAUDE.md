@@ -15,7 +15,7 @@ _port_probe.sh: 三个部署脚本共享的只读认亲层，可 source 也可�
 migration_rehearsal.py: P6 合成账本的封存副本、域目录复制、三锚核验与故障后回滚演练器；只接受 `synthetic-fixture`，没有生产路径入口。封存把副本 chmod 成 0o500/0o400，因此清旧副本必须先放开权限再删——否则同一夹具只能演练一次。
 web/: 随源码提交的统一仪表盘预构建发布目录；Python 静态层只读取。
 web-dashboard/: 统一 React 仪表盘源码与纯函数回归；构建后原子产出至 web/。
-test_lifeos_http_core.py: P0 的隔离 HTTP 回归；锁定双账本 health、Token、Host 与旧无前缀路由拒绝。
+test_lifeos_http_core.py: P0 的隔离 HTTP 回归；锁定双账本 health、Token、Host、全响应防嵌入安全头与旧无前缀路由拒绝。
 test_time_domain.py / test_lifeos_http_time.py: 时间域纯规则金样与随机端口回归；后者含 `timeclock → timectl/time_commands → lifeconn → HTTP → timeview` 的真实命令链、超长软标记的阈值下发，以及新增/修改/删除版本与不可覆盖快照一致性。
 test_finance_domain.py / test_lifeos_http_finance.py: 财务算法、边缘端点和随机端口 HTTP 回归；前者含 XLSX 导出前的公式钉死（明细与税务两表、= + - @ 四种前缀），后者含新建路径 90 秒重复闸的六条判据；包含完整账目前后版本链、单币种/周期暂停 MVP 闸、更新路径、导入 commit、双账本互不阻塞、账户改名传播、余额调整补差、类别扩展字段留存与大体积附件的变异锁。
 test_finance_attachment_upload.py: 附件上传的落盘副作用回归；404 的上传必须寸土不动，正常上传的目录/文件/索引行三者齐备。

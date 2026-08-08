@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 configuration/transactions/budget API、Layout 的软刷新信号、store/dashboardLayout 的 widget 布局、
- *   各看板卡片组件与 lib/financeAnalytics 汇总及全量取数上限。
+ *   各看板卡片组件与 lib/financeAnalytics 汇总。
  * [OUTPUT]: 对外提供单币种 MVP 的财务状况看板；周期预测与订阅 widget 固定不渲染。
  * [POS]: 纯报表页——不承载任何配置入口；widget 显隐/排序在「财务设置 → 仪表盘」中调整。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -29,7 +29,6 @@ import { useThemeStore } from "../store/theme";
 import { useDashboardLayoutStore, type DashboardWidgetId } from "../store/dashboardLayout";
 import { getPalette, getSeriesPalette } from "../components/charts/theme";
 import {
-  FULL_LEDGER_LIMIT,
   accountBalance,
   filterTransactions,
   summarizeTax,
@@ -84,8 +83,8 @@ export function OverviewPage() {
     [refreshKey],
   );
   const { data: transactionData, loading: txLoading, error: txError, refresh: refreshTx } = useApi(
-    // 报销总览扇形图"不随统计区间过滤"，须取全量，避免老垫付被分页截断漏统计。
-    () => api.listTransactions({ limit: FULL_LEDGER_LIMIT }),
+    // 报销总览不随统计区间过滤，必须读取整本账。
+    () => api.listTransactions(),
     [refreshKey],
   );
   const currentMonth = useMemo(() => {

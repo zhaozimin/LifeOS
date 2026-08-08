@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 core.ts 的单 Token 传输层与 types.ts 的时间领域响应契约。
- * [OUTPUT]: 提供全部 `/v1/time/*` 时间账本请求、不可覆盖修改版本及唯一共享的 health 读取。
+ * [OUTPUT]: 提供全部 `/v1/time/*` 时间账本请求、默认全量的不可覆盖修改版本及唯一共享的 health 读取。
  * [POS]: 时间页面的 API 门面；禁止页面自行拼装域前缀。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -22,6 +22,6 @@ export const timeApi = {
   deleteSegment: (id: string, reason: string) => request<{ segment: Segment }>("DELETE", `/v1/time/segments/${encodeURIComponent(id)}`, { body: { reason, operator: "dashboard" } }),
   summary: (from: string, to: string, options: ReadOptions = {}) => request<RangeSummary>("GET", "/v1/time/summary/range", { params: { from, to }, signal: options.signal }),
   gaps: (date: string, options: ReadOptions = {}) => request<GapsResponse>("GET", "/v1/time/gaps", { params: { date }, signal: options.signal }),
-  auditEvents: (limit = 100, options: ReadOptions = {}) => request<AuditEvent[]>("GET", "/v1/time/audit/events", { params: { limit }, signal: options.signal }),
+  auditEvents: (options: ReadOptions = {}) => request<AuditEvent[]>("GET", "/v1/time/audit/events", { signal: options.signal }),
   masterOperation: (body: Record<string, unknown>) => request<{ ok: true; entity: CategoryOrProject }>("POST", "/v1/time/agent/operations", { body }),
 };

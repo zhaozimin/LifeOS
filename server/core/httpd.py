@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖已验证配置、领域健康投影、Ledger 身份与静态资源根。
-[OUTPUT]: 对外提供 ThreadingHTTPServer、结构化 API 响应与健康端点；
+[OUTPUT]: 对外提供 ThreadingHTTPServer、结构化 API 响应、健康端点与不可覆盖的防嵌入安全头；
            routes_from_contract 按域 ROUTES 装配路由，Route 自带请求体上限，
            回环 Host/Bearer 构成边界，未预期异常留痕到 stderr。
 [POS]: core 的唯一 HTTP 边界；领域只能暴露 handler，不得自行创建服务器或绕过认证。
@@ -104,6 +104,12 @@ class Application:
 
 
 _HEADER_FORBIDDEN = ("\r", "\n", "\0")
+_SECURITY_HEADERS = (
+    ("Content-Security-Policy", "frame-ancestors 'none'"),
+    ("X-Frame-Options", "DENY"),
+    ("X-Content-Type-Options", "nosniff"),
+)
+_SECURITY_HEADER_NAMES = frozenset(name.lower() for name, _ in _SECURITY_HEADERS)
 
 
 def _assert_sendable_header(name: str, value: str) -> None:
@@ -263,7 +269,13 @@ class LifeOSRequestHandler(BaseHTTPRequestHandler):
         # 网线上就成了「200 OK + Content-Type: application/pdf」后面紧跟「500」——
         # 客户端读到 200 与正确的 Content-Type，body 却是错误 JSON，前端没有任何察觉机会。
         # CRLF 同理：注入的换行会提前终结头块，把其后的安全头全部挤进响应体。
-        headers = tuple(response.headers.items())
+        # 防嵌入策略是 HTTP 边界的不变量，不允许领域响应以同名头覆盖或削弱。
+        # CSP frame-ancestors 是现代浏览器的标准防线；X-Frame-Options 为旧浏览器兜底。
+        headers = tuple(
+            (name, value)
+            for name, value in response.headers.items()
+            if name.lower() not in _SECURITY_HEADER_NAMES
+        ) + _SECURITY_HEADERS
         for name, value in headers:
             _assert_sendable_header(name, value)
 
@@ -272,7 +284,6 @@ class LifeOSRequestHandler(BaseHTTPRequestHandler):
         for name, value in headers:
             self.send_header(name, value)
         self.send_header("Content-Length", str(len(response.body)))
-        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         if response.body:
             self.wfile.write(response.body)

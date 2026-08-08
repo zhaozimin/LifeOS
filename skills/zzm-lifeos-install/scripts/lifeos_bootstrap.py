@@ -2,7 +2,7 @@
 [INPUT]: 依赖 GitHub Release API（api.github.com）、发布物内的 server 安装/自启/卸载脚本，
          以及本机 `~/.config/lifeos/install.json` 指针；只用 Python 3.9+ 标准库，零第三方依赖。
 [OUTPUT]: 对外提供 detect/install/status/uninstall 四个子命令，以及 Secret、资产挑选、校验和解析、
-          压缩包顶层目录、安装目标裁定、宿主探测与 health 判据等可独立回归的纯函数。
+          压缩包顶层目录、指针/安装目标裁定、宿主探测、原子升级编排与 health 回滚。
 [POS]: lifeos-install 的唯一实现。SKILL.md 只做意图判断，一切正确性——域白名单、sha256、目标占用、
        双 dbPath 归属、Token 不外泄——都在此裁定；它不 import lifeos skill 的任何脚本，
        因为引导阶段那套脚本还没落到本机。
@@ -10,7 +10,6 @@
 """
 
 from __future__ import annotations
-
 import argparse
 import hashlib
 import json
@@ -27,6 +26,7 @@ import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Sequence
+from lifeos_deploy import commit_upgrade, deploy, quiesce_upgrade, recover_interrupted_upgrade, restore_previous_upgrade, rollback_upgrade
 
 
 REPOSITORY = "zhaozimin/LifeOS"
@@ -78,7 +78,6 @@ REQUIRED_MEMBERS = (
 )
 HEX_DIGITS = set("0123456789abcdef")
 
-
 class BootstrapError(RuntimeError):
     """一切可预期失败都走这里：message 说清发生了什么，advice 说清用户下一步做什么。
 
@@ -119,7 +118,6 @@ def scrub(text: str, secret: "Secret | None") -> str:
     """子进程输出一律经此层。安装器会把含 Token 的面板地址打到 stdout，直接转发就是泄漏。"""
     return secret.scrub(text) if secret is not None else text
 
-
 def say(message: str) -> None:
     print(f"· {message}")
 
@@ -155,7 +153,6 @@ def release_endpoint(version: "str | None") -> str:
     if version:
         return f"{API_ROOT}/repos/{REPOSITORY}/releases/tags/{urllib.parse.quote(version, safe='')}"
     return f"{API_ROOT}/repos/{REPOSITORY}/releases/latest"
-
 
 def fetch_release(version: "str | None" = None) -> dict:
     try:
@@ -302,6 +299,8 @@ def assert_release_layout(source: Path) -> None:
 
 def install_target_verdict(target: Path, upgrade: bool) -> str:
     """返回 fresh 或 upgrade；任何「会把别人的东西盖掉」的情形一律拒绝。"""
+    if target.is_symlink():
+        raise BootstrapError(f"安装目标 {target} 是符号链接，拒绝跟随覆盖。", "请用 --install-path 指向真实安装目录。")
     if target.exists() and not target.is_dir():
         raise BootstrapError(f"安装目标 {target} 是一个文件，不是目录。", "换一个 --install-path，或先把这个文件挪走。")
     if not target.is_dir() or not any(target.iterdir()):
@@ -320,13 +319,13 @@ def install_target_verdict(target: Path, upgrade: bool) -> str:
 
 
 def pointer_install_path(pointer: Path) -> "Path | None":
-    """只读全局指针；读不到或读坏了都当作「没有在服役的安装」，预检不为一个损坏的指针拦下干净的安装。"""
-    try:
-        payload = json.loads(pointer.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
+    """只读全局指针；缺失表示未安装，存在但损坏则必须显式覆盖。"""
+    if not pointer.exists(): return None
+    try: payload = json.loads(pointer.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError): raise BootstrapError(f"全局指针 {pointer} 存在但无法解析，拒绝猜测正在服役的安装。", "什么都没有被写入。确实要改指本次安装时，加 --replace-pointer 重跑。") from None
     candidate = payload.get("installPath") if isinstance(payload, dict) else None
-    return Path(candidate).expanduser().resolve() if isinstance(candidate, str) and candidate else None
+    if not isinstance(candidate, str) or not candidate: raise BootstrapError(f"全局指针 {pointer} 没有有效 installPath，拒绝覆盖。", "什么都没有被写入。确实要改指本次安装时，加 --replace-pointer 重跑。")
+    return Path(candidate).expanduser().resolve()
 
 
 def port_is_occupied(port: int, *, timeout: float = 1.0) -> bool:
@@ -384,26 +383,6 @@ def preflight_local_conflicts(
             f"端口 {port} 已被一个无法认亲的服务占用，拒绝安装。",
             "什么都没有被写进你的电脑。请先停止占用该端口的程序，或用 --port <其它端口> 重跑。",
         )
-
-
-def deploy(source: Path, target: Path, verdict: str) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if verdict == "fresh":
-        # 先落到同一父目录下的暂存名再整体改名：中途断电只留下一个可丢弃的 .incoming，
-        # 不会留下一个「装了一半」的安装根让下一次重跑判断不了状态。
-        incoming = target.parent / f".{target.name}.incoming-{os.getpid()}"
-        shutil.rmtree(incoming, ignore_errors=True)
-        try:
-            shutil.copytree(source, incoming)
-            if target.is_dir():
-                target.rmdir()
-            os.replace(incoming, target)
-        finally:
-            shutil.rmtree(incoming, ignore_errors=True)
-        return
-    # 升级只叠加代码：两本账本、config.json 与 connection-info 都不在发布物里，
-    # 因此覆盖复制碰不到它们，也不需要先删旧目录。
-    shutil.copytree(source, target, dirs_exist_ok=True)
 
 
 # ── Agent 宿主 ───────────────────────────────────────────────────────────────
@@ -594,6 +573,8 @@ def run_step(command: Sequence, cwd: Path, extra_env: "dict | None" = None) -> "
     return completed.returncode, ((completed.stdout or "") + (completed.stderr or "")).strip()
 
 
+
+
 # ── 子命令 ───────────────────────────────────────────────────────────────────
 
 def command_detect(args: argparse.Namespace) -> int:
@@ -609,16 +590,17 @@ def command_detect(args: argparse.Namespace) -> int:
     print(json.dumps(report, ensure_ascii=False))
     return 0
 
-
 def command_install(args: argparse.Namespace) -> int:
     home = Path.home()
     target = Path(args.install_path).expanduser() if args.install_path else DEFAULT_INSTALL_PATH.expanduser()
+    recover_interrupted_upgrade(target)
     verdict = install_target_verdict(target, args.upgrade)
+    install_port = intended_port(target, args.port)
     # 三道否决闸（目标占用、指针冲突、端口占用）全部跑完才允许下载：它们只需要本机现状，
     # 排在 deploy 之后就等于用一套半安装换一条本可以早说的拒绝。
     preflight_local_conflicts(
         target,
-        intended_port(target, args.port),
+        install_port,
         verdict,
         pointer=home / POINTER_RELATIVE,
         replace_pointer=args.replace_pointer,
@@ -640,7 +622,13 @@ def command_install(args: argparse.Namespace) -> int:
         say("sha256 校验通过")
         source = _extract(package, staging / "unpacked")
         assert_release_layout(source)
-        deploy(source, target, verdict)
+        if verdict == "upgrade":
+            quiesce_upgrade(target, install_port, port_is_occupied=port_is_occupied, run_step=run_step)
+        try:
+            deploy(source, target, verdict)
+        except BaseException:
+            if verdict == "upgrade": restore_previous_upgrade(target, run_step=run_step)
+            raise
         say(f"程序本体已就位：{target}")
     finally:
         shutil.rmtree(staging, ignore_errors=True)
@@ -653,22 +641,33 @@ def command_install(args: argparse.Namespace) -> int:
     code, output = run_step(["bash", "server/install_and_start_lifeos_node.sh"], target, setup_env)
     secret = _secret_quietly(target)
     if code != 0:
+        if verdict == "upgrade": restore_previous_upgrade(target, run_step=run_step)
         raise BootstrapError(
             "配置阶段失败，服务没有启动。",
             scrub(output, secret) or "安装脚本没有给出更多信息；请把这段输出发给 LifeOS 项目。",
         )
     say("配置、双账本目录与全局指针已生成")
 
-    port, token = read_connection(target)
+    try:
+        port, token = read_connection(target)
+    except BaseException:
+        if verdict == "upgrade": restore_previous_upgrade(target, run_step=run_step)
+        raise
     # 自启的 plist 里要写死解释器绝对路径：装 openpyxl 的那个 python3 和 launchd 默认拿到的
     # /usr/bin/python3 往往不是同一个，差别只会在导出报表时以 503 的形态暴露。
     agent_env = {"LIFEOS_INSTALL_PATH": str(target), "LIFEOS_PYTHON": shutil.which("python3") or sys.executable}
     code, output = run_step(["bash", "server/install_launch_agent.sh"], target, agent_env)
     if code != 0:
+        if verdict == "upgrade": restore_previous_upgrade(target, run_step=run_step)
         raise BootstrapError("开机自启安装失败。", scrub(output, token) or "请把这段输出发给 LifeOS 项目。")
     say("开机自启已安装（label com.lifeos.node）")
 
-    wait_for_health(port, token, target / "server" / "runtime")
+    try:
+        wait_for_health(port, token, target / "server" / "runtime")
+    except BaseException:
+        if verdict == "upgrade": restore_previous_upgrade(target, run_step=run_step)
+        raise
+    if verdict == "upgrade": commit_upgrade(target)
     say("认证 health 通过：时间与财务两本账本都落在本次安装内")
 
     # 服务此刻已经常驻并自证过了：面板地址必须在这里交付，不能押在后面的宿主注入之后。

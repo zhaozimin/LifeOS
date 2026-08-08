@@ -1,8 +1,8 @@
 /**
  * [INPUT]: 依赖财务领域类型与时间范围筛选规则。
- * [OUTPUT]: 对外提供余额、流水归属、汇总与图表数据转换函数，以及三个财务页共用的全量取数上限 FULL_LEDGER_LIMIT。
+ * [OUTPUT]: 对外提供余额、流水归属、汇总与图表数据转换函数。
  * [POS]: web-dashboard 的纯业务分析层；为页面和图表隔离原始 API 数据中的边界情况。
- *   本层所有聚合都以「输入是整本账」为前提，取数上限因此与聚合同处一室——分页截断在这里是错误答案，不是少量误差。
+ *   本层所有聚合都以「输入是整本账」为前提，页面读取不得设置会截断历史的 limit。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
@@ -21,20 +21,6 @@ import type { TimeDimension } from "../store/timeRange";
 // 显式 .ts：本模块要能被 node --test 直接 import，无扩展名的运行期导入 Node 认不了。
 // tsconfig 已开 allowImportingTsExtensions，Vite 与 tsc 都照常。
 import { transactionMatchesRange } from "./timeRange.ts";
-
-/**
- * 财务页拉取流水时的条数上限。
- *
- * 服务端按 occurred_at DESC 排序后再切片，limit 拿到的永远是「最近 N 条」的头部，
- * 更早的账整体不进页面。本文件里的每一个聚合都默认输入是整本账：月均支出、桑基路径、
- * 区间汇总、以及 UI 用来推导可选月份的桶列表——被截断时它们不会报错，只会安静地少算，
- * 于是「全部时间」的资金流缺早期路径、可支撑月数偏差、早期月份从下拉里消失，
- * 用户会以为那些月份根本没有账。
- *
- * 上限因此收在聚合旁边，三个财务页共用同一个数，不再各写各的魔法数字；
- * 十万条足以覆盖任何现实个人账本，真到了那个量级该做的是分页聚合，而不是悄悄砍掉一半历史。
- */
-export const FULL_LEDGER_LIMIT = 100000;
 
 export function accountOwnershipMap(accounts: Account[]): Record<string, AccountOwnership> {
   return Object.fromEntries(

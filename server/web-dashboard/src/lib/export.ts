@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖含非空 resolvedTimezone/nullable currentSystemTimezone 的 Configuration、UTC Segment 与分页读取函数。
- * [OUTPUT]: 对外提供全量去重分页收集、保留冻结 IANA/nullable 系统候选与 UTC 锚点的白名单 JSON、稳定序列化和文件名纯函数。
+ * [OUTPUT]: 对外提供无页数上限的全量去重收集、保留冻结 IANA/nullable 系统候选与 UTC 锚点的白名单 JSON、稳定序列化和文件名纯函数。
  * [POS]: lib 的数据主权边界；排除密钥与未知字段，同时保住跨机器后仍可重建墙钟和绝对顺序的真源。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -38,8 +38,6 @@ export interface TimeOSExport {
 }
 
 const DEFAULT_PAGE_SIZE = 500;
-const MAX_EXPORT_PAGES = 10_000;
-
 export async function collectAllSegments(
   readPage: SegmentPageReader,
   options: { pageSize?: number; signal?: AbortSignal } = {},
@@ -49,7 +47,7 @@ export async function collectAllSegments(
   const seen = new Set<string>();
   let offset = 0;
 
-  for (let pageNumber = 0; pageNumber < MAX_EXPORT_PAGES; pageNumber += 1) {
+  while (true) {
     options.signal?.throwIfAborted();
     const page = await readPage({ offset, limit: pageSize, includeDeleted: true, signal: options.signal });
     if (!Array.isArray(page.segments) || !Number.isInteger(page.total) || page.total < 0) {
@@ -70,8 +68,6 @@ export async function collectAllSegments(
     }
     offset += page.segments.length;
   }
-
-  throw new Error("导出分页超过安全上限，已停止以避免生成不完整文件。");
 }
 
 export function buildTimeOSExport(

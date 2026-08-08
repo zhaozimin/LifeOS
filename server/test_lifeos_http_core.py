@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖临时 runtime、lifeos_node_server 应用工厂和标准库 HTTP 客户端。
-[OUTPUT]: 对外提供 P0 双账本 health、fail-closed 配置、Host、Bearer 与旧路径拒绝回归测试。
+[OUTPUT]: 对外提供 P0 双账本 health、fail-closed 配置、Host、Bearer、防嵌入响应头与旧路径拒绝回归测试。
 [POS]: server 的 HTTP 核心验收；全部测试使用随机端口和临时账本，绝不触及生产 51440 或 59418。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -18,7 +18,7 @@ import unittest
 from pathlib import Path
 
 from core.config import write_config
-from core.httpd import SHARED_READONLY, create_server
+from core.httpd import SHARED_READONLY, Response, Route, create_server
 from core.static_files import StaticFiles
 from domains.finance.routes_read import ROUTES as FIN_READ_ROUTES
 from domains.finance.routes_write import ROUTES as FIN_WRITE_ROUTES
@@ -71,15 +71,46 @@ class IsolatedLifeOS(unittest.TestCase):
         self.temporary.cleanup()
 
     def request(self, path: str, *, token: str | None = None, host: str | None = None) -> tuple[int, dict]:
+        status, _, body = self.raw_request(path, token=token, host=host)
+        return status, json.loads(body.decode("utf-8"))
+
+    def raw_request(
+        self, path: str, *, token: str | None = None, host: str | None = None,
+    ) -> tuple[int, http.client.HTTPMessage, bytes]:
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
         headers = {"Host": host or f"127.0.0.1:{self.port}"}
         if token is not None:
             headers["Authorization"] = f"Bearer {token}"
         connection.request("GET", path, headers=headers)
         response = connection.getresponse()
-        payload = json.loads(response.read().decode("utf-8"))
+        body = response.read()
+        response_headers = response.headers
         connection.close()
-        return response.status, payload
+        return response.status, response_headers, body
+
+    def test_all_response_paths_forbid_cross_origin_framing(self) -> None:
+        self.app.register(Route(
+            "GET",
+            "/v1/test/weaken-frame-policy",
+            lambda _request: Response(200, headers={
+                "Content-Security-Policy": "frame-ancestors *",
+                "X-Frame-Options": "SAMEORIGIN",
+                "X-Content-Type-Options": "off",
+            }),
+        ))
+        cases = (
+            ("/dashboard/", None, 200),
+            ("/v1/health", self.token, 200),
+            ("/v1/health", "wrong", 401),
+            ("/v1/test/weaken-frame-policy", self.token, 200),
+        )
+        for path, token, expected_status in cases:
+            with self.subTest(path=path, expected_status=expected_status):
+                status, headers, _ = self.raw_request(path, token=token)
+                self.assertEqual(status, expected_status)
+                self.assertEqual(headers.get_all("Content-Security-Policy"), ["frame-ancestors 'none'"])
+                self.assertEqual(headers.get_all("X-Frame-Options"), ["DENY"])
+                self.assertEqual(headers.get_all("X-Content-Type-Options"), ["nosniff"])
 
     def test_health_contains_two_independent_ledger_paths(self) -> None:
         status, payload = self.request("/v1/health", token=self.token)

@@ -1,8 +1,8 @@
 /**
- * [INPUT]: 依赖 configuration / transactions API、Layout 的软刷新信号、lib/financeAnalytics 的过滤、桑基构建与全量取数上限。
+ * [INPUT]: 依赖 configuration / transactions API、Layout 的软刷新信号、lib/financeAnalytics 的过滤与桑基构建。
  * [OUTPUT]: 对外提供 FlowPage（全局资金流桑基图 + 抽屉钻取；桑基容器自适应视口高度）。
  * [POS]: web-dashboard 首屏；全部/工作/生活 三视图 tab 仅在 ledgerMode=dual（或存在 company 账户）时显示。
- *   本页所有派生量（桑基路径、可支撑月数、时间范围栏的可选桶）都建立在整本账之上，取数必须走 FULL_LEDGER_LIMIT。
+ *   本页所有派生量（桑基路径、可支撑月数、时间范围栏的可选桶）都建立在整本账之上，取数不设上限。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { useCallback, useMemo, useState } from "react";
@@ -21,7 +21,6 @@ import { useApi } from "../lib/useApi";
 import { formatCurrency } from "../lib/format";
 import { useTimeRangeStore } from "../store/timeRange";
 import {
-  FULL_LEDGER_LIMIT,
   accountBalance,
   averageMonthlyExpense,
   buildSankey,
@@ -55,9 +54,8 @@ export function FlowPage() {
     [refreshKey],
   );
   const { data: transactionData, loading: txLoading, error: txError, refresh: refreshTx } = useApi(
-    // 「全部时间」必须真的是全部：服务端按 occurred_at DESC 切片，limit 只会拿到最近的头部，
-    // 早期的账整体不进页面——桑基缺早期路径、可支撑月数偏差、早期月份从下拉里消失。
-    () => api.listTransactions({ limit: FULL_LEDGER_LIMIT }),
+    // 「全部时间」必须真的是全部，不向服务端传 limit。
+    () => api.listTransactions(),
     [refreshKey],
   );
 

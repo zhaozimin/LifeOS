@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖类别、对手方模型与基础设置原语。
+ * [INPUT]: 依赖类别、对手方模型、全量流水 API 与基础设置原语。
  * [OUTPUT]: 提供类别、客户合作方编辑和金额符号化。
  * [POS]: 财务主数据编辑的第二组面板。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -207,7 +207,7 @@ export function CounterpartiesSection({
   accounts: Account[];
   onChange: (next: Counterparty[]) => void;
 }) {
-  const { data: transactionData } = useApi(() => api.listTransactions({ limit: 3000 }), []);
+  const { data: transactionData } = useApi(() => api.listTransactions(), []);
   const transactions = transactionData || [];
   const recentByCp = useMemo(() => {
     const map = new Map<string, { count: number; total: number }>();

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 core.ts 单 Token 传输层与 fin/types.ts 的财务领域契约。
- * [OUTPUT]: 提供全部 `/v1/fin/*` 财务账本请求、不可覆盖修改版本、附件与受保护下载。
+ * [OUTPUT]: 提供全部 `/v1/fin/*` 财务账本请求、默认全量的不可覆盖修改版本、附件与受保护下载。
  * [POS]: 财务页面的 API 门面；这是 fin 域前缀的唯一前端真源。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -34,16 +34,16 @@ async function fileAsBase64(file: File): Promise<string> {
 export const finApi = {
   configuration: () => request<Configuration>("GET", "/v1/fin/configuration"),
   putConfiguration: (payload: Configuration) => request<Configuration>("PUT", "/v1/fin/configuration", { body: payload }),
-  listTransactions: (params: TransactionParams) => request<Transaction[]>("GET", "/v1/fin/transactions", { params }),
+  listTransactions: (params: TransactionParams = {}) => request<Transaction[]>("GET", "/v1/fin/transactions", { params }),
   createTransaction: (payload: Partial<Transaction>) => request<Transaction>("POST", "/v1/fin/transactions", { body: payload }),
   updateTransaction: (id: string, payload: Partial<Transaction>) => request<Transaction>("PUT", `/v1/fin/transactions/${encodeURIComponent(id)}`, { body: payload }),
   deleteTransaction: (id: string) => request<{ ok: true; id: string }>("DELETE", `/v1/fin/transactions/${encodeURIComponent(id)}`),
-  updateReimbursement: (id: string, status: Transaction["reimbursementStatus"]) => request<{ ok: true; id: string; status: string }>("PATCH", `/v1/fin/transactions/${encodeURIComponent(id)}/reimbursement`, { body: { status } }),
-  settleReimbursement: (payload: { incomeId: string; settleIds: string[]; unsettleIds: string[] }) => request<{ ok: true; incomeId: string; settled: number; unsettled: number; invalid: string[] }>("POST", "/v1/fin/reimbursements/settle", { body: payload }),
+  updateReimbursement: (id: string, status: Transaction["reimbursementStatus"]) => request<{ ok: true; id: string; status: string; operations: AuditEvent[]; auditWarning?: string }>("PATCH", `/v1/fin/transactions/${encodeURIComponent(id)}/reimbursement`, { body: { status } }),
+  settleReimbursement: (payload: { incomeId: string; settleIds: string[]; unsettleIds: string[] }) => request<{ ok: true; incomeId: string; settled: number; unsettled: number; invalid: string[]; operations: AuditEvent[]; auditWarning?: string }>("POST", "/v1/fin/reimbursements/settle", { body: payload }),
   summaryMonth: (params: { view?: ViewMode; month?: string }) => request<MonthSummary>("GET", "/v1/fin/summary/month", { params }),
   dashboardOverview: (params: { view?: ViewMode } = {}) => request<DashboardOverview>("GET", "/v1/fin/dashboard/overview", { params }),
   budgetStatus: (params: { month?: string } = {}) => request<BudgetStatus>("GET", "/v1/fin/budget/status", { params }),
-  auditEvents: (limit = 100) => request<{ events: AuditEvent[] }>("GET", "/v1/fin/audit/events", { params: { limit } }),
+  auditEvents: () => request<{ events: AuditEvent[] }>("GET", "/v1/fin/audit/events"),
   listRecurring: () => request<RecurringRule[]>("GET", "/v1/fin/recurring"),
   createRecurring: (payload: Partial<RecurringRule>) => request<RecurringRule>("POST", "/v1/fin/recurring", { body: payload }),
   updateRecurring: (id: string, payload: Partial<RecurringRule>) => request<RecurringRule>("PUT", `/v1/fin/recurring/${encodeURIComponent(id)}`, { body: payload }),

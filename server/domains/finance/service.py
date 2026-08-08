@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 finance Ledger、各财务算法模块、core 审计和 DomainError。
-[OUTPUT]: 对外提供 finance schema、附件域内路径的降级式归一化、事务编排、
+[OUTPUT]: 对外提供 finance schema、附件域内路径的降级式归一化、报销全版本审计与事务编排、
            含账户改名传播与余额调整补差的配置写入、单币种/周期暂停 MVP 闸、
            新建路径独有的重复提交时间窗闸，以及账目的不可覆盖前后版本。
 [POS]: finance 的应用服务层；每个写操作只开 finance.write_transaction，绝不导入或锁住 time 账本。
@@ -43,6 +43,7 @@ from domains.finance.reimbursement import (
     assert_income, revert_for_deleted_income_in_connection,
     set_reimbursement_status_in_connection, settle_in_connection,
 )
+from domains.finance.reimbursement_audit import append_reimbursement_revisions, linked_expense_versions, transaction_versions
 from domains.finance.reports import (
     budget_status as report_budget_status, dashboard_overview,
     habits as report_habits, monthly_summary,
@@ -55,23 +56,17 @@ from domains.finance.store import (
 from domains.finance.views import (
     build_adjustment_payload, current_balance_for_account, list_accounts, normalize_ownership,
 )
-
-
 def ensure_schema(ledger: Ledger) -> None:
     with ledger.write_transaction() as connection:
         ensure_schema_in_connection(connection)
         _normalize_attachment_paths_in_connection(ledger, connection)
         seed_default_master_data_in_connection(connection)
-
-
 def _attachment_relative_path(value: object) -> Path:
     """只接受 finance 域内 `attachments/` 的相对路径，阻断历史绝对路径越界。"""
     relative = Path(str(value or ""))
     if relative.is_absolute() or ".." in relative.parts or not relative.parts or relative.parts[0] != "attachments":
         raise DomainError("invalid_attachment_path", "附件路径必须位于财务账本的 attachments 目录。", status=500)
     return relative
-
-
 def _attachment_file_path(ledger: Ledger, value: object) -> Path:
     """将已验证的相对路径投影为当前 finance runtime 内的唯一文件位置。"""
     root = ledger.db_path.parent.resolve()
@@ -81,8 +76,6 @@ def _attachment_file_path(ledger: Ledger, value: object) -> Path:
     except ValueError as error:
         raise DomainError("invalid_attachment_path", "附件路径越出财务运行目录。", status=500) from error
     return target
-
-
 def _legacy_attachment_relative_path(value: object) -> Path:
     """从封存旧库的绝对路径提取 `attachments/` 后缀；映射不唯一时交由调用方降级。"""
     source = Path(str(value or ""))
@@ -94,8 +87,6 @@ def _legacy_attachment_relative_path(value: object) -> Path:
             "ambiguous_attachment_path", "旧附件路径无法唯一映射到 finance/attachments。", status=500
         )
     return _attachment_relative_path(Path(*source.parts[markers[0]:]))
-
-
 def _normalize_attachment_paths_in_connection(ledger: Ledger, connection: sqlite3.Connection) -> None:
     """把历史绝对路径收敛为域内相对路径。
 
@@ -127,15 +118,11 @@ def _normalize_attachment_paths_in_connection(ledger: Ledger, connection: sqlite
             file=sys.stderr,
             flush=True,
         )
-
-
 def health_projection(ledger: Ledger) -> dict[str, Any]:
     connection = ledger.connect()
     try: value = load_ledger_settings(connection).get("lastIngestedAt")
     finally: connection.close()
     return {"dbPath": str(ledger.db_path), "lastIngestedAt": value}
-
-
 def normalize_projects(items: object) -> list[dict[str, Any]]:
     if not isinstance(items, list): return default_ledger_settings()["projects"]
     out = []
@@ -144,30 +131,20 @@ def normalize_projects(items: object) -> list[dict[str, Any]]:
         goal = item.get("goal") if isinstance(item.get("goal"), dict) else None; target = coerce_float((goal or {}).get("targetAmount"))
         out.append({"id": item.get("id") or f"project-{index+1}", "name": str(item.get("name") or f"项目 {index+1}").strip() or f"项目 {index+1}", "direction": "收入" if item.get("direction") == "收入" else "支出", "group": str(item.get("group") or item.get("name") or f"项目 {index+1}").strip(), "note":str(item.get("note") or ""), "trackingEnabled":coerce_bool(item.get("trackingEnabled")), "goal": {"targetAmount":target,"targetDate":str(goal.get("targetDate") or "")[:10] or None,"sourceAccountId":str(goal.get("sourceAccountId") or ""),"description":str(goal.get("description") or "")} if target > 0 else None, "expectedCost":coerce_float(item.get("expectedCost")), "expectedRevenue":coerce_float(item.get("expectedRevenue")), "startDate":str(item.get("startDate") or "")[:10] or None,"endDate":str(item.get("endDate") or "")[:10] or None})
     return out or default_ledger_settings()["projects"]
-
-
 def normalize_finance_sources(items: object) -> list[dict[str, Any]]:
     if not isinstance(items, list): return default_ledger_settings()["financeSources"]
     return [{"id":item.get("id") or f"source-{index+1}","name":str(item.get("name") or f"资金来源 {index+1}").strip() or f"资金来源 {index+1}","defaultAccountId":str(item.get("defaultAccountId") or ""),"note":str(item.get("note") or ""),"tintHex":str(item.get("tintHex") or "#87B99B"),"deletedAt":item.get("deletedAt") or None,"deletedBy":item.get("deletedBy") or None,"deletionReason":item.get("deletionReason") or None} for index,item in enumerate(items) if isinstance(item,dict)] or default_ledger_settings()["financeSources"]
-
-
 def normalize_counterparties(items: object) -> list[dict[str, Any]]:
     if not isinstance(items, list): return []
     return [{"id":item.get("id") or f"counterparty-{index+1}","name":str(item.get("name") or f"对手方 {index+1}").strip() or f"对手方 {index+1}","kind":item.get("kind") if item.get("kind") in {"client","vendor","employer","other"} else "client","tintHex":str(item.get("tintHex") or "#7F91D6"),"defaultAccountId":str(item.get("defaultAccountId") or ""),"note":str(item.get("note") or ""),"contactInfo":str(item.get("contactInfo") or "")} for index,item in enumerate(items) if isinstance(item,dict)]
-
-
 def _existing(row: sqlite3.Row | None, key: str, default: Any = None) -> Any:
     if row is None: return default
     try: return row[key]
     except IndexError: return default
-
-
 def _normalize_iso(value: object, fallback: str) -> str:
     if not value: return fallback
     try: return datetime.fromisoformat(str(value).replace("Z", "+00:00")).isoformat()
     except ValueError: return fallback
-
-
 def _base_snapshot(payload: dict[str, Any], existing_row: sqlite3.Row | None, connection: sqlite3.Connection, currency_in: object, account: str) -> object:
     """决定本位币快照该沿用、缩放还是重算。
 
@@ -188,8 +165,6 @@ def _base_snapshot(payload: dict[str, Any], existing_row: sqlite3.Row | None, co
         _existing(existing_row, "amount_in_base_currency"),
         payload["amount"],
     )
-
-
 def transaction_row_from_payload(connection: sqlite3.Connection, payload: dict[str, Any], *, now: str | None = None, transaction_id: str | None = None, existing_row: sqlite3.Row | None = None) -> dict[str, Any]:
     # now 是机器时刻（created_at/updated_at）；occurred_at 是用户墙钟时刻，两者语义不同不可共用一个值。
     # 曾经共用 utc_now_iso()：记录时区 Asia/Shanghai 的用户在北京 19:43 记的账，
@@ -217,18 +192,12 @@ def transaction_row_from_payload(connection: sqlite3.Connection, payload: dict[s
     elif kind == "transfer": from_account, to_account, account = from_account or account, to_account or payload.get("targetAccountName") or merchant or "", str(from_account or account)
     currency_in = payload.get("currency") if "currency" in payload else _existing(existing_row,"currency"); settings = load_ledger_settings(connection)
     return {"id":transaction_id or _existing(existing_row,"id") or str(uuid4()),"title":title,"amount":float(payload.get("amount",_existing(existing_row,"amount",0)) or 0),"kind":kind,"occurred_at":_normalize_iso(payload.get("occurredAt"),_existing(existing_row,"occurred_at",now_record_iso())),"category_json":json.dumps(category,ensure_ascii=False),"tags_json":json.dumps(tags if isinstance(tags,list) else [],ensure_ascii=False),"account_name":account,"from_account_name":from_account,"to_account_name":to_account,"merchant":merchant,"project_name":payload.get("projectName") if "projectName" in payload else _existing(existing_row,"project_name"),"note":str(payload.get("note",_existing(existing_row,"note","")) or ""),"reimbursement_status":str(payload.get("reimbursementStatus",_existing(existing_row,"reimbursement_status","notApplicable")) or "notApplicable"),"source":str(payload.get("source",_existing(existing_row,"source","openClaw")) or "openClaw"),"source_name":payload.get("sourceName") if "sourceName" in payload else _existing(existing_row,"source_name"),"counterparty_id":(payload.get("counterpartyId") if "counterpartyId" in payload else _existing(existing_row,"counterparty_id")) or None,"invoice_issued":int(coerce_bool(payload.get("invoiceIssued"),False) if "invoiceIssued" in payload else bool(_existing(existing_row,"invoice_issued",0))),"invoice_attachment_id":(payload.get("invoiceAttachmentId") if "invoiceAttachmentId" in payload else _existing(existing_row,"invoice_attachment_id")) or None,"tax_category":payload.get("taxCategory") if payload.get("taxCategory") in {"business-income","business-expense-deductible","business-expense-nondeductible","personal","transfer"} else (_existing(existing_row,"tax_category") or "personal"),"currency":resolve_transaction_currency(connection,currency_in,account),"amount_in_base_currency":resolve_amount_in_base(connection,_base_snapshot(payload,existing_row,connection,currency_in,account),payload.get("amount",_existing(existing_row,"amount",0)),currency_in,account,settings),"created_at":_existing(existing_row,"created_at",now),"updated_at":now}
-
-
 def _amount(payload: dict[str, Any]) -> None:
     if "amount" not in payload or payload["amount"] is None: return
     value = coerce_float(payload["amount"], float("nan"))
     if value != value or value < 0: raise DomainError("invalid_amount","amount 必须是有限的非负数。",status=400)
-
-
 def _touch_settings(connection: sqlite3.Connection, now: str) -> None:
     settings = load_ledger_settings(connection); settings["lastIngestedAt"] = now; settings["updatedAt"] = now; save_ledger_settings(connection,settings,now)
-
-
 def _revision_actor(source: object) -> str:
     resolved = str(source or "openClaw")
     if resolved == "manual": return "dashboard"
@@ -324,10 +293,13 @@ def delete_transaction(ledger: Ledger, transaction_id: str, *, actor: str = "das
     with ledger.write_transaction() as connection:
         tx = row_to_transaction(get_transaction(connection,transaction_id))
         if tx.get("deletedAt"): raise DomainError("already_deleted","流水已删除。",status=409)
+        cascade_before = linked_expense_versions(connection, transaction_id) if tx["kind"] == "income" else {}
         connection.execute("UPDATE transactions SET deleted_at=?,deleted_by=?,deletion_reason=?,deletion_operation_id=?,updated_at=? WHERE id=?",(now,actor,reason,operation,now,transaction_id)); cascaded=0
         if tx["kind"] == "income": cascaded=revert_for_deleted_income_in_connection(connection,transaction_id,now)
+        cascade_after = transaction_versions(connection, cascade_before)
         deleted = row_to_transaction(get_transaction(connection, transaction_id))
-        event={"id":operation,"occurredAt":now,"actor":actor,"action":"delete","entityType":"transaction","entityId":transaction_id,"entityName":tx["title"],"impact":{"amount":tx["amount"],"kind":tx["kind"],"accountName":tx["accountName"],"reimbursementsUnsettled":cascaded},"payload":{"before":tx,"after":deleted,"reason":reason}}; append_audit_event(connection,event); _touch_settings(connection,now); checkpoint = checkpoint_after_commit(connection, ledger, event)
+        event={"id":operation,"occurredAt":now,"actor":actor,"action":"delete","entityType":"transaction","entityId":transaction_id,"entityName":tx["title"],"impact":{"amount":tx["amount"],"kind":tx["kind"],"accountName":tx["accountName"],"reimbursementsUnsettled":cascaded},"payload":{"before":tx,"after":deleted,"reason":reason}}; append_audit_event(connection,event)
+        append_reimbursement_revisions(connection,cascade_before,cascade_after,occurred_at=now,actor=actor,reason="删除回款级联撤销",income_id=transaction_id); _touch_settings(connection,now); checkpoint = checkpoint_after_commit(connection, ledger, event)
     warning = checkpoint[0] or None
     result = {"ok": True, "id": transaction_id, "operation": event}
     if warning:
@@ -335,22 +307,32 @@ def delete_transaction(ledger: Ledger, transaction_id: str, *, actor: str = "das
     return result
 
 
-def update_reimbursement(ledger: Ledger, transaction_id: str, status: str) -> dict[str, Any]:
+def update_reimbursement(ledger: Ledger, transaction_id: str, status: str, *, actor: str = "dashboard") -> dict[str, Any]:
     if status not in REIMBURSEMENT_STATUSES: raise DomainError("invalid_status","报销状态无效。",status=400)
+    now=utc_now_iso()
     with ledger.write_transaction() as connection:
-        row=get_transaction(connection,transaction_id)
-        set_reimbursement_status_in_connection(connection,transaction_id,status,row["reimbursed_by"],utc_now_iso())
-    return {"ok":True,"id":transaction_id,"status":status}
+        row=get_transaction(connection,transaction_id); before=transaction_versions(connection,[transaction_id])
+        set_reimbursement_status_in_connection(connection,transaction_id,status,row["reimbursed_by"],now)
+        events=append_reimbursement_revisions(connection,before,transaction_versions(connection,[transaction_id]),occurred_at=now,actor=actor,reason="修改报销状态")
+        if events: _touch_settings(connection,now); checkpoint=checkpoint_after_commit(connection,ledger,events[-1])
+    result={"ok":True,"id":transaction_id,"status":status,"operations":events}
+    if events and checkpoint[0]: result["auditWarning"]=checkpoint[0]
+    return result
 
 
-def settle_reimbursement(ledger: Ledger, payload: dict[str, Any]) -> dict[str, Any]:
+def settle_reimbursement(ledger: Ledger, payload: dict[str, Any], *, actor: str = "dashboard") -> dict[str, Any]:
     income_id=str(payload.get("incomeId") or ""); settle=[str(item) for item in payload.get("settleIds") or [] if item]; unsettle=[str(item) for item in payload.get("unsettleIds") or [] if item]
     if not income_id: raise DomainError("invalid_request","缺少 incomeId。",status=400)
     if not settle and not unsettle: raise DomainError("invalid_request","没有可核销项。",status=400)
+    now=utc_now_iso()
     with ledger.write_transaction() as connection:
-        assert_income(get_transaction(connection,income_id))
-        outcome=settle_in_connection(connection,income_id,settle,unsettle,utc_now_iso())
-    return {"ok":True,"incomeId":income_id,**outcome}
+        assert_income(get_transaction(connection,income_id)); before=transaction_versions(connection,[*settle,*unsettle])
+        outcome=settle_in_connection(connection,income_id,settle,unsettle,now)
+        events=append_reimbursement_revisions(connection,before,transaction_versions(connection,before),occurred_at=now,actor=actor,reason="回款核销或撤销",income_id=income_id)
+        if events: _touch_settings(connection,now); checkpoint=checkpoint_after_commit(connection,ledger,events[-1])
+    result={"ok":True,"incomeId":income_id,**outcome,"operations":events}
+    if events and checkpoint[0]: result["auditWarning"]=checkpoint[0]
+    return result
 
 
 def recurring(ledger: Ledger, method: str, rule_id: str | None = None, payload: dict[str, Any] | None = None) -> Any:
@@ -724,9 +706,11 @@ def reports(ledger: Ledger, kind: str, query: dict[str,str]) -> dict[str, Any]:
     finally: connection.close()
 
 
-def audit_events(ledger: Ledger, limit: int) -> list[dict[str,Any]]:
+def audit_events(ledger: Ledger, limit: int | None = None) -> list[dict[str,Any]]:
     connection=ledger.connect()
-    try: rows=connection.execute("SELECT * FROM audit_events ORDER BY occurred_at DESC LIMIT ?",(min(max(limit,1),500),)).fetchall()
+    try:
+        if limit is None: rows=connection.execute("SELECT * FROM audit_events ORDER BY occurred_at DESC").fetchall()
+        else: rows=connection.execute("SELECT * FROM audit_events ORDER BY occurred_at DESC LIMIT ?",(max(limit,1),)).fetchall()
     finally: connection.close()
     return [{"id":row["id"],"occurredAt":row["occurred_at"],"actor":row["actor"],"action":row["action"],"entityType":row["entity_type"],"entityId":row["entity_id"],"entityName":row["entity_name"],"impact":json.loads(row["impact_json"]),"payload":json.loads(row["payload_json"])} for row in rows]
 

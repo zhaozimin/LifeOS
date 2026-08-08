@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖账本 API、Layout 的软刷新信号、交易类型、筛选工具与编辑/附件组件、
- *   lib/financeAnalytics 的全量取数上限、lib/reimbursement 判定、ReimbursementSettleSheet 回款核销抽屉。
+ *   lib/financeAnalytics 聚合、lib/reimbursement 判定、ReimbursementSettleSheet 回款核销抽屉。
  * [OUTPUT]: 对外提供 LedgerPage，展示有效流水、灰色删除线修改版本和可审计的已删除流水；报销 tab 提供
  *   垫付清单（默认待回款、不受时间区间限制）、行内快捷标记与回款核销入口。
  * [POS]: web-dashboard 的流水工作台；删除对象仍留在原日期组内但不参与金额汇总。
@@ -27,7 +27,7 @@ import { api } from "../api/client";
 import { useApi } from "../lib/useApi";
 import { formatCurrency } from "../lib/format";
 import { useTimeRangeStore } from "../store/timeRange";
-import { FULL_LEDGER_LIMIT, dailyGroups, filterTransactions, summarizeTransactions } from "../lib/financeAnalytics";
+import { dailyGroups, filterTransactions, summarizeTransactions } from "../lib/financeAnalytics";
 import { isPendingReimbursement, isReimbursable, isReimbursementIncome } from "../lib/reimbursement";
 import type { Transaction, TransactionKind } from "../types";
 
@@ -97,9 +97,8 @@ export function LedgerPage() {
 
   const { data: configuration } = useApi(() => api.configuration(), [refreshKey]);
   const { data: transactionData, loading, refresh } = useApi(
-    // 报销 tab 声称"扫全历史"，故取全量（服务端按最近排序，limit 是尾部切片）——
-    // 上限走 FULL_LEDGER_LIMIT，避免老垫付被静默截断而漏报待回款。
-    () => api.listTransactions({ limit: FULL_LEDGER_LIMIT, includeDeleted: 1 }),
+    // 报销 tab 扫全历史，仅要求包含已删除记录，不设数量上限。
+    () => api.listTransactions({ includeDeleted: 1 }),
     [refreshKey],
   );
   const currentMonth = useMemo(() => {
@@ -111,7 +110,7 @@ export function LedgerPage() {
     [currentMonth, refreshKey],
   );
   const { data: auditData, error: auditError, loading: auditLoading } = useApi(
-    () => api.auditEvents(100),
+    () => api.auditEvents(),
     [refreshKey],
   );
 
