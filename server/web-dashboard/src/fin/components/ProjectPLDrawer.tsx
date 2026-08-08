@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖项目与全量流水 API、图表/主题组件和浏览器导出能力。
+ * [OUTPUT]: 对外提供 ProjectPLDrawer，展示某项目的全历史收支、图表与 PDF 导出。
+ * [POS]: fin/components 的项目损益钻取层，只消费账本真相，不改写流水。
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Download, X } from "lucide-react";
@@ -84,7 +90,7 @@ export function ProjectPLDrawer({ open, project, onClose, onEditTransaction }: P
   };
 
   const { data: transactions } = useApi(
-    () => (project ? api.listTransactions({ limit: 3000 }) : Promise.resolve([] as Transaction[])),
+    () => (project ? api.listTransactions() : Promise.resolve([] as Transaction[])),
     [project?.id, open],
   );
 

@@ -35,7 +35,7 @@ def build_routes(ledger: Ledger) -> tuple[Route,...]:
     def update(request: Request) -> Response: return mutation(request,lambda item:Response.json(200,service.update_transaction(ledger,item.params["id"],read_json_object(item.body, item.max_body_bytes))))
     def delete(request: Request) -> Response:
         query=parse_qs(request.query); return mutation(request,lambda item:Response.json(200,service.delete_transaction(ledger,item.params["id"],actor=item.headers.get("X-FinOS-Actor","dashboard"),reason=(query.get("reason",["删除流水"])[0] or "删除流水"))))
-    def reimbursement(request: Request) -> Response: return mutation(request,lambda item:Response.json(200,service.update_reimbursement(ledger,item.params["id"],read_json_object(item.body, item.max_body_bytes).get("status"))))
+    def reimbursement(request: Request) -> Response: return mutation(request,lambda item:Response.json(200,service.update_reimbursement(ledger,item.params["id"],read_json_object(item.body, item.max_body_bytes).get("status"),actor=item.headers.get("X-FinOS-Actor","dashboard"))))
     # 周期规则的 create/update 内部各跑恰好一次即时追平；不能再套通用 mutation，
     # 否则会同一请求双扫描、最多重复生成 120 条历史交易。
     def recurring_create(request: Request) -> Response: return Response.json(201,service.recurring(ledger,"create",payload=read_json_object(request.body, request.max_body_bytes)))
@@ -45,7 +45,7 @@ def build_routes(ledger: Ledger) -> tuple[Route,...]:
     # preview 只解析用户上传的账单、并不写 ledger；按 E9 它必须保持纯读，不能顺带 catchup。
     def preview(request: Request) -> Response: return Response.json(200,service.import_preview(ledger,read_json_object(request.body, request.max_body_bytes)))
     def commit(request: Request) -> Response: return mutation(request,lambda item:Response.json(200,service.import_commit(ledger,read_json_object(item.body, item.max_body_bytes))))
-    def settle(request: Request) -> Response: return mutation(request,lambda item:Response.json(200,service.settle_reimbursement(ledger,read_json_object(item.body, item.max_body_bytes))))
+    def settle(request: Request) -> Response: return mutation(request,lambda item:Response.json(200,service.settle_reimbursement(ledger,read_json_object(item.body, item.max_body_bytes),actor=item.headers.get("X-FinOS-Actor","dashboard"))))
     def catchup(_request: Request) -> Response: return Response.json(200,service.catchup(ledger))
     def upload(request: Request) -> Response: return mutation(request,lambda item:Response.json(201,service.upload_attachment(ledger,item.params["txid"],read_json_object(item.body, item.max_body_bytes))))
     def delete_attachment(request: Request) -> Response: return mutation(request,lambda item:Response.json(200,service.delete_attachment(ledger,item.params["id"])))

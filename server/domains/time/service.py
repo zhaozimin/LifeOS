@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 time Ledger、冻结时区 clock、core 审计与 SQLite 连接；接收根配置的记录时区意图。
-[OUTPUT]: 对外提供旧 TimeOS 账本迁移、时区恢复、时段与主数据事务、统计投影，以及每次时段写入的不可覆盖前后版本和数据库检查点。
+[OUTPUT]: 对外提供旧 TimeOS 账本迁移、时区恢复、时段与主数据事务、统计投影，以及无数量上限的不可覆盖前后版本和数据库检查点。
 [POS]: time 的应用服务层；在 HTTP 监听前建立时间语义和数据库同构，并将所有时段写路径收口到同一版本链。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -721,12 +721,11 @@ def habits(ledger: Ledger, query: str) -> dict[str, Any]:
     total = len(matched)
     render = lambda values: [{"name": name, "share": round(count / total, 3)} for name, count in sorted(values.items(), key=lambda pair: (-pair[1], pair[0]))] if total else []
     return {"category": render(category_counts), "project": render(project_counts), "avgDurationMinutes": round(sum(durations) / total) if total else 0}
-
-
-def audit_events(ledger: Ledger, limit: int) -> list[dict[str, Any]]:
-    safe_limit = min(max(limit, 1), 500)
+def audit_events(ledger: Ledger, limit: int | None = None) -> list[dict[str, Any]]:
     connection = ledger.connect()
-    try: rows = connection.execute("SELECT * FROM audit_events ORDER BY occurred_at DESC LIMIT ?", (safe_limit,)).fetchall()
+    try:
+        if limit is None: rows = connection.execute("SELECT * FROM audit_events ORDER BY occurred_at DESC").fetchall()
+        else: rows = connection.execute("SELECT * FROM audit_events ORDER BY occurred_at DESC LIMIT ?", (max(limit, 1),)).fetchall()
     finally: connection.close()
     return [{"id": row["id"], "occurredAt": row["occurred_at"], "actor": row["actor"], "action": row["action"], "entityType": row["entity_type"], "entityId": row["entity_id"], "entityName": row["entity_name"], "impact": json.loads(row["impact_json"]), "payload": json.loads(row["payload_json"])} for row in rows]
 

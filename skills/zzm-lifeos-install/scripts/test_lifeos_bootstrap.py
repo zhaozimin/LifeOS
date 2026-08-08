@@ -1,10 +1,10 @@
 """
 [INPUT]: 只依赖同目录的 lifeos_bootstrap 与标准库 unittest/tempfile；不发网络、不读真实家目录、不碰任何安装。
-[OUTPUT]: 对外提供引导安装的纯函数金样：地址白名单、Release 附件挑选、校验和解析、压缩包顶层目录、
-          安装目标裁定、宿主自动探测、skill 覆盖护栏、health 归属判据与 Token 掩码。
+[OUTPUT]: 对外提供引导安装金样：地址白名单、Release 附件挑选、校验和解析、压缩包顶层目录、
+          目标/指针裁定、原子升级回滚、宿主探测、skill 覆盖护栏、health 归属判据与 Token 掩码。
 [POS]: skills/zzm-lifeos-install/scripts 的回归底座。锁的是那些「放行一次就无法挽回」的判据——
-       校验和对不上、压缩包越界、把别人的目录当成升级目标、把别人的 skill 覆盖掉——
-       而不是命令行长什么样。副作用四处（下载/解压/部署/子进程）不在此文件覆盖范围内。
+       校验和对不上、压缩包越界、损坏指针被当成缺失、升级失败混装新旧代码、把别人的 skill 覆盖掉——
+       而不是命令行长什么样。网络与真实 LaunchAgent 副作用不在此文件覆盖范围内。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
 
@@ -15,6 +15,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 import lifeos_bootstrap as boot
 
@@ -357,6 +358,51 @@ class PointerTests(unittest.TestCase):
             boot.resolve_install_root(str(self.sandbox / "explicit"), pointer),
             (self.sandbox / "explicit").resolve(),
         )
+
+    def test_preflight_rejects_a_malformed_pointer_unless_replacement_is_explicit(self) -> None:
+        pointer = self.sandbox / "broken.json"
+        pointer.write_text("{截断", encoding="utf-8")
+        with patch.object(boot, "port_is_occupied", return_value=False):
+            with self.assertRaises(boot.BootstrapError) as caught:
+                boot.preflight_local_conflicts(self.sandbox / "target", 59418, "fresh", pointer=pointer, replace_pointer=False)
+            self.assertIn("--replace-pointer", caught.exception.advice)
+            boot.preflight_local_conflicts(self.sandbox / "target", 59418, "fresh", pointer=pointer, replace_pointer=True)
+
+
+class AtomicDeploymentTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.sandbox = Path(self.temporary.name)
+        self.addCleanup(self.temporary.cleanup)
+        self.source, self.target = self.sandbox / "release", self.sandbox / "app"
+        (self.source / "server").mkdir(parents=True)
+        (self.source / "server/app.py").write_text("new", encoding="utf-8")
+        (self.target / "server/runtime").mkdir(parents=True)
+        (self.target / "server/app.py").write_text("old", encoding="utf-8")
+        (self.target / "server/stale.py").write_text("stale", encoding="utf-8")
+        (self.target / "server/runtime/finance.sqlite3").write_bytes(b"ledger")
+
+    def test_upgrade_is_promoted_as_one_tree_and_rolls_back_before_health_commit(self) -> None:
+        boot.deploy(self.source, self.target, "upgrade")
+        self.assertEqual((self.target / "server/app.py").read_text(), "new")
+        self.assertFalse((self.target / "server/stale.py").exists())
+        self.assertEqual((self.target / "server/runtime/finance.sqlite3").read_bytes(), b"ledger")
+        boot.rollback_upgrade(self.target)
+        self.assertEqual((self.target / "server/app.py").read_text(), "old")
+        self.assertTrue((self.target / "server/stale.py").is_file())
+
+    def test_copy_failure_leaves_the_serving_tree_byte_for_byte_untouched(self) -> None:
+        with patch("lifeos_deploy.shutil.copytree", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                boot.deploy(self.source, self.target, "upgrade")
+        self.assertEqual((self.target / "server/app.py").read_text(), "old")
+        self.assertTrue((self.target / "server/stale.py").is_file())
+
+    def test_health_commit_retires_backup_and_keeps_the_new_tree(self) -> None:
+        boot.deploy(self.source, self.target, "upgrade")
+        boot.commit_upgrade(self.target)
+        boot.recover_interrupted_upgrade(self.target)
+        self.assertEqual((self.target / "server/app.py").read_text(), "new")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 core HTTP Route/Response、finance Ledger 与 finance.service 只读操作。
-[OUTPUT]: 对外提供 11 条 `/v1/fin/*` 读取路由契约，及由该契约驱动装配的构造函数。
+[OUTPUT]: 对外提供 11 条 `/v1/fin/*` 读取路由契约，修改历史默认完整返回，及由契约驱动的构造函数。
 [POS]: finance 读面适配层；dashboard overview 保留 E9 兼容调用，当前 MVP 中该调用是不写数据的暂停回执。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -51,8 +51,9 @@ def build_routes(ledger: Ledger) -> tuple[Route,...]:
     def habits(request: Request) -> Response: return Response.json(200,service.reports(ledger,"habits",_query(request)))
     def configuration(request: Request) -> Response: return Response.json(200,service.configuration(ledger))
     def audit(request: Request) -> Response:
-        try: limit=int(_query(request).get("limit","100"))
-        except ValueError: limit=100
+        raw_limit=_query(request).get("limit")
+        try: limit=int(raw_limit) if raw_limit is not None else None
+        except ValueError: limit=None
         return Response.json(200,{"events":service.audit_events(ledger,limit)})
     def attachment(request: Request) -> Response:
         meta, body = service.read_attachment(ledger,request.params["id"])

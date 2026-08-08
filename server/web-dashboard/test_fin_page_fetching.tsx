@@ -13,7 +13,6 @@
 
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
-import { FULL_LEDGER_LIMIT } from "./src/fin/lib/financeAnalytics.ts";
 
 const listTransactions = vi.fn(async () => []);
 const configuration = vi.fn(async () => ({
@@ -42,10 +41,8 @@ test("资金流量按整本账取流水，不留分页截断", async () => {
   render(<FlowPage />);
   await waitFor(() => expect(listTransactions).toHaveBeenCalled());
 
-  // 服务端按 occurred_at DESC 切片，limit 拿到的是「最近 N 条」的头部：
-  // 早期的账整体不进页面，桑基缺早期路径、可支撑月数偏差、早期月份从下拉里消失。
-  expect(listTransactions).toHaveBeenCalledWith({ limit: FULL_LEDGER_LIMIT });
-  expect(FULL_LEDGER_LIMIT).toBeGreaterThanOrEqual(100000);
+  // 不传 limit 才是全量；任何有限数都会在账本足够大时吞掉早期历史。
+  expect(listTransactions.mock.calls[0]).toEqual([]);
 });
 
 test("顶栏刷新信号推进时，财务页真的重新取数", async () => {

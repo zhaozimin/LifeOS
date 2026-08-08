@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖账户、全量流水 API 与抽屉展示原语。
+ * [OUTPUT]: 对外提供 AdjustmentHistoryDrawer，展示某账户全部余额调整记录。
+ * [POS]: fin/components 的账户调整追溯视图，不向账本写入数据。
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { ArrowDownRight, ArrowUpRight, History, X } from "lucide-react";
@@ -14,7 +20,7 @@ interface Props {
 
 export function AdjustmentHistoryDrawer({ open, account, onClose }: Props) {
   const { data: transactions } = useApi(
-    () => (account ? api.listTransactions({ limit: 3000 }) : Promise.resolve([] as Transaction[])),
+    () => (account ? api.listTransactions() : Promise.resolve([] as Transaction[])),
     [account?.id, open],
   );
 

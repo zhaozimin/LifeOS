@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖临时 runtime、LifeOS 应用工厂、finance.sqlite3 直连与标准库 HTTP 客户端。
-[OUTPUT]: 锁定 P2 财务 CRUD、报销级联、域内附件路径、导入两步、MVP 周期暂停回执、双账本互不阻塞，
+[OUTPUT]: 锁定 P2 财务 CRUD、报销逐笔版本/级联、无上限审计读取/全历史习惯投影、域内附件路径、导入两步、MVP 周期暂停回执、双账本互不阻塞，
           以及新建路径的重复提交时间窗闸（含逃生阀、窗口外放行与既有 id 的 409 而非 500）。
 [POS]: finance HTTP 验收；全部请求走随机端口，绝不触碰 59418 或任何生产 runtime。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -101,9 +101,14 @@ class FinanceHttpTests(FinanceFixture):
 
     def test_crud_and_reimbursement_delete_cascade(self) -> None:
         expense=self.transaction(reimbursementStatus="draft"); income=self.transaction(kind="income",title="报销",category={"name":"工资"})
+        status, marked = self.request("PATCH",f"/v1/fin/transactions/{expense['id']}/reimbursement",{"status":"submitted"}); self.assertEqual((status,marked["status"]),(200,"submitted"))
         status,payload=self.request("POST","/v1/fin/reimbursements/settle",{"incomeId":income["id"],"settleIds":[expense["id"]]}); self.assertEqual((status,payload["settled"]),(200,1))
         self.assertEqual(self.request("DELETE",f"/v1/fin/transactions/{income['id']}")[0],200)
         status,items=self.request("GET","/v1/fin/transactions?includeDeleted=1"); self.assertEqual(status,200); self.assertEqual({item["id"]:item for item in items}[expense["id"]]["reimbursementStatus"],"draft")
+        status,audit=self.request("GET","/v1/fin/audit/events"); self.assertEqual(status,200)
+        revisions=[item for item in reversed(audit["events"]) if item["entityId"]==expense["id"] and item["action"]=="update"]
+        self.assertEqual([(item["payload"]["before"]["reimbursementStatus"],item["payload"]["after"]["reimbursementStatus"]) for item in revisions],[('draft','submitted'),('submitted','reimbursed'),('reimbursed','draft')])
+        self.assertEqual([item["payload"]["reason"] for item in revisions],["修改报销状态","回款核销或撤销","删除回款级联撤销"])
         self.assertTrue(any((self.runtime/"finance"/"audit"/"snapshots").glob("*.sqlite3")))
 
     def test_import_preview_is_pure_and_dashboard_is_e9_trigger(self) -> None:
@@ -219,6 +224,30 @@ class FinanceHttpTests(FinanceFixture):
 
 class FinanceRegressionTests(FinanceFixture):
     """锁定本轮修复：更新路径、导入 commit、双库互不阻塞、配置写入三重语义、请求体上限。"""
+
+    def test_audit_history_has_no_implicit_cap(self) -> None:
+        self.configuration()
+        connection = sqlite3.connect(self.runtime / "finance" / "finance.sqlite3")
+        connection.executemany(
+            "INSERT INTO audit_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [(f"bulk-{index}", f"2026-01-01T00:00:{index % 60:02d}Z", "test", "update", "transaction", f"t-{index}", "历史", "{}", "{}") for index in range(501)],
+        )
+        connection.commit(); connection.close()
+        status, payload = self.request("GET", "/v1/fin/audit/events")
+        self.assertEqual((status, len(payload["events"])), (200, 501))
+
+    def test_habits_use_the_complete_transaction_history(self) -> None:
+        """一条旧习惯不能在新增 500 条流水后突然消失。"""
+        self.configuration()
+        fields = "id,title,amount,kind,occurred_at,category_json,tags_json,account_name,merchant,note,reimbursement_status,source,created_at,updated_at"
+        rows = [("old-habit", "历史习惯标记", 1, "expense", "2025-01-01T00:00:00Z", "{}", "[]", "微信支付", "", "", "notApplicable", "manual", "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z")]
+        rows.extend((f"new-{index}", "新流水", 1, "expense", "2026-01-01T00:00:00Z", "{}", "[]", "微信支付", "", "", "notApplicable", "manual", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z") for index in range(500))
+        connection = sqlite3.connect(self.runtime / "finance" / "finance.sqlite3")
+        connection.executemany(f"INSERT INTO transactions ({fields}) VALUES ({','.join('?' for _ in fields.split(','))})", rows)
+        connection.commit(); connection.close()
+
+        status, payload = self.request("GET", f"/v1/fin/habits?q={quote('历史习惯标记')}")
+        self.assertEqual((status, payload["byPhrase"]["matches"]), (200, 1))
 
     def test_update_transaction_marks_corrected_and_exposes_timestamps(self) -> None:
         """PUT 路径此前零测试覆盖，而回执缺 createdAt/updatedAt 让「已更正 ↻」永不可达。"""

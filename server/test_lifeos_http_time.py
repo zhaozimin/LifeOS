@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖临时 runtime、LifeOS HTTP 应用工厂、时间域真实声明式路由与时间 Skill 的受护栏命令链。
-[OUTPUT]: 对外提供时间段、配置（含超长阈值与 overlong 软标记）、主数据、完整修改版本、统计、自动收尾及 `timectl → time_commands → lifeconn → timeview` 的随机端口回归。
+[OUTPUT]: 对外提供时间段、配置（含超长阈值与 overlong 软标记）、主数据、无上限完整修改版本、统计、自动收尾及 `timectl → time_commands → lifeconn → timeview` 的随机端口回归。
 [POS]: 时间域端到端契约测试；所有运行使用随机端口和临时 SQLite，绝不访问生产 51440/59418。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -13,6 +13,7 @@ import io
 import json
 import os
 import socket
+import sqlite3
 import sys
 import tempfile
 import threading
@@ -317,14 +318,18 @@ class IsolatedTimeLifeOS(TimeHttpFixture):
         status, payload = self.request("POST", "/v1/time/agent/operations", body)
         self.assertEqual((status, payload["error"]), (422, "immutable_field"))
 
-    def test_audit_limit_is_bounded_but_always_returns_a_list(self) -> None:
+    def test_audit_history_has_no_implicit_cap(self) -> None:
         self.assertEqual(self.request("POST", "/v1/time/agent/operations", {
             "userConfirmation": "请创建项目", "entity": "project", "action": "create", "payload": {"name": "审计项目", "status": "active"},
         })[0], 200)
-        status, events = self.request("GET", "/v1/time/audit/events?limit=9999")
-        self.assertEqual(status, 200)
-        self.assertIsInstance(events, list)
-        self.assertLessEqual(len(events), 500)
+        connection = sqlite3.connect(self.runtime / "time" / "time.sqlite3")
+        connection.executemany(
+            "INSERT INTO audit_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [(f"bulk-{index}", f"2026-01-01T00:00:{index % 60:02d}Z", "test", "update", "segment", f"s-{index}", "历史", "{}", "{}") for index in range(501)],
+        )
+        connection.commit(); connection.close()
+        status, events = self.request("GET", "/v1/time/audit/events")
+        self.assertEqual((status, len(events)), (200, 502))
 
     def test_minute_range_uses_half_open_interval_boundaries(self) -> None:
         self.assertEqual(self.request("POST", "/v1/time/segments", {

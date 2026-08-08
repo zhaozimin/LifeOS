@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖可取消的时段/统计/configuration API（含超长软标记阈值）、Layout 软刷新信号、记录时区与 UTC 当前瞬间、timeline 缩放/交互真源、日/周时间轴组件及共享编辑确认原语。
- * [OUTPUT]: 对外提供只接受最新请求、进行中摘要逐分钟更新、DST 真实时长投影、跨午夜跟随今日的日/周时间账、编辑/软删除及灰色删除线修改痕迹。
+ * [OUTPUT]: 对外提供只接受最新请求、进行中摘要逐分钟更新、DST 真实时长投影、跨午夜跟随今日的日/周时间账、编辑/软删除及全部灰色删除线修改痕迹。
  * [POS]: pages 的时间账浏览核心；同时向时间轴下发墙钟当前分钟、绝对当前瞬间与服务端超长阈值（配置未到手即传 null），最后写入权、局部回填和手势几何下沉到领域模块。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -184,7 +184,7 @@ export function DayPage({ recordTimeZone }: { recordTimeZone: string }) {
     setHistoryLoading(true);
     setHistoryError("");
     try {
-      setHistoryEvents(await api.auditEvents(100));
+      setHistoryEvents(await api.auditEvents());
     } catch (caught) {
       setHistoryError(caught instanceof Error ? caught.message : "修改痕迹读取失败。");
     } finally {
