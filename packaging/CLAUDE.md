@@ -11,4 +11,6 @@ market-skill/: 市场 Skill 的覆盖层，只存放「与仓库内 zzm-lifeos �
 
 构建入口在仓库根 `make_skill_bundle.py`，进料是 `make_release.sh` 已扫描过的 `dist/lifeos-<版本>/`。市场包因此永远是发布物的派生形态，不可能含有发布物不含的东西。
 
+发布物名字是 `zzm-lifeos-full-<版本>.zip`，**刻意不以 `lifeos-` 开头**：安装器把 `lifeos-<版本>.zip` 认作整套系统的包，任何同前缀的新附件都会让它看见两个候选而按「有歧义不猜」整条拒绝。v1.2.0 就是这么塌的——歧义在 Release 的附件集合里而不在客户端版本里，所以连已经发出去的旧 skill 一起失效。往这个 Release 加任何新附件之前，先去 `test_lifeos_bootstrap.py` 的真实附件集合金样里证明它不制造歧义。
+
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

@@ -39,6 +39,7 @@ from lifeos_source import (  # noqa: F401
     archive_root,
     assert_allowed_url,
     digest_of,
+    is_system_archive,
     materialize_payload,
     read_payload_manifest,
     _open,
@@ -61,10 +62,6 @@ SKILL_HOSTS = (
 )
 # 只有 Hermes 有 SOUL.md 这层常驻人格；对别的宿主跑路由安装器等于去写坏它们的配置。
 ROUTER_HOST = "hermes"
-ASSET_PREFIX, ASSET_SUFFIX = "lifeos-", ".zip"
-# lifeos-install-skill-<版本>.zip 同样匹配 lifeos-*.zip，但它只装引导 skill 自己。
-# 选错的后果是把引导包当成整套系统解压进安装目录，而且直到 health 才会暴露。
-SIDECAR_PREFIX = "lifeos-install-skill-"
 HEALTH_DOMAINS = ("time", "finance")
 # 「这个目录里到底是不是 LifeOS」的唯一判据，升级与卸载都靠它，不靠目录名。
 INSTALL_MARKER = "server/lifeos_node_server.py"
@@ -160,10 +157,7 @@ def select_release_assets(payload: dict) -> "tuple[dict, dict]":
         if name and url:
             assets[name] = url
     tag = str(payload.get("tag_name") or "未知版本")
-    archives = sorted(
-        name for name in assets
-        if name.startswith(ASSET_PREFIX) and name.endswith(ASSET_SUFFIX) and not name.startswith(SIDECAR_PREFIX)
-    )
+    archives = sorted(name for name in assets if is_system_archive(name))
     if not archives:
         raise BootstrapError(
             f"Release {tag} 里没有 lifeos-*.zip 安装包附件。",

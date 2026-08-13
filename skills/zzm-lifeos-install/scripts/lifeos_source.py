@@ -35,6 +35,8 @@ ALLOWED_HOSTS = (
     "objects.githubusercontent.com",
 )
 HEX_DIGITS = set("0123456789abcdef")
+DIGITS = set("0123456789")
+ASSET_PREFIX, ASSET_SUFFIX = "lifeos-", ".zip"
 
 
 class BootstrapError(RuntimeError):
@@ -48,7 +50,24 @@ class BootstrapError(RuntimeError):
         self.advice = advice
 
 
-# ── 网络路径：白名单、下载、解压 ──────────────────────────────────────────────
+# ── 网络路径：附件判据、白名单、下载、解压 ────────────────────────────────────
+
+
+def is_system_archive(name: str) -> bool:
+    """整套系统的包必然叫 `lifeos-<版本>.zip`，而版本号必以数字开头。
+
+    这里曾经用「lifeos-*.zip 减去几个已知前缀」的黑名单判据，v1.2.0 发布当天就被
+    自己的新附件击穿：市场包 lifeos-skill-1.2.0.zip 同样匹配 lifeos-*.zip，安装器
+    于是看见两个候选、按「有歧义不猜」直接拒绝。真正致命的是波及范围——歧义在
+    Release 的附件集合里，不在客户端版本里，所以**已经发出去的旧 skill 一起失效**，
+    推荐路径对全体用户静默死掉；而本地金样喂的是手写附件表，只有真实下载才暴露。
+    黑名单每加一个附件就得补一条，漏一条的代价就是这个。改成结构正判据之后，
+    任何在 `lifeos-` 之后带词的附件天然出局，不必再维护任何名单。
+    """
+    if not (name.startswith(ASSET_PREFIX) and name.endswith(ASSET_SUFFIX)):
+        return False
+    version = name[len(ASSET_PREFIX):-len(ASSET_SUFFIX)]
+    return bool(version) and version[0] in DIGITS
 
 
 def assert_allowed_url(url: str) -> str:

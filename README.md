@@ -78,7 +78,7 @@ The full walkthrough — every step, what you should see, and what to do when yo
 
 ### 0 · One skill, whole system (simplest)
 
-Download `lifeos-skill-1.2.0.zip` from the [latest release](https://github.com/zhaozimin/LifeOS/releases/latest), unzip it, drop the `zzm-lifeos-full` folder into your agent's skills directory (`~/.claude/skills/` for Claude Code), then tell it "帮我装 LifeOS".
+Download `zzm-lifeos-full-1.2.1.zip` from the [latest release](https://github.com/zhaozimin/LifeOS/releases/latest), unzip it, drop the `zzm-lifeos-full` folder into your agent's skills directory (`~/.claude/skills/` for Claude Code), then tell it "帮我装 LifeOS".
 
 The skill **carries the entire source tree**, so the install never touches the network: it verifies every file against a sha256 manifest, restores the release tree onto your disk, starts the service and registers the launch agent. Same skill handles your daily records afterwards — nothing else to install.
 
@@ -90,7 +90,7 @@ If you use an AI client that can run commands, paste this to it and wait:
 请帮我在这台 Mac 上安装 LifeOS，严格按下面的步骤做，不要跳步、不要自己发挥：
 
 1. 打开 https://github.com/zhaozimin/LifeOS/releases/latest ，
-   下载名字形如 lifeos-install-skill-1.2.0.zip 的附件，以及它旁边同名的 .sha256 文件。
+   下载名字形如 lifeos-install-skill-1.2.1.zip 的附件，以及它旁边同名的 .sha256 文件。
 2. 用 shasum -a 256 -c 校验这个 zip。校验不通过就立刻停下来告诉我，不要继续。
 3. 解压，把里面的 zzm-lifeos-install 整个文件夹放进你自己的 skills 目录
    （Claude Code 通常是 ~/.claude/skills/，别的 Agent 用你自己的那个）。
@@ -104,7 +104,7 @@ The installer checks the download's sha256 before anything touches your disk, re
 
 ### 2 · Download the release
 
-Grab `lifeos-1.2.0.zip` from the [latest release](https://github.com/zhaozimin/LifeOS/releases/latest), verify it, unpack it, run one command. See [安装指南](docs/安装指南.md) → 路径二.
+Grab `lifeos-1.2.1.zip` from the [latest release](https://github.com/zhaozimin/LifeOS/releases/latest), verify it, unpack it, run one command. See [安装指南](docs/安装指南.md) → 路径二.
 
 ### 3 · From source
 

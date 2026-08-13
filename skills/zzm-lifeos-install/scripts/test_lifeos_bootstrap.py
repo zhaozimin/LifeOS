@@ -82,6 +82,33 @@ class ReleaseAssetTests(unittest.TestCase):
                 "lifeos-1.0.1.zip", "lifeos-1.0.1.zip.sha256",
             ))
 
+    def test_only_a_bare_version_after_the_product_name_is_the_system_package(self) -> None:
+        """判据是结构正判据，不是黑名单——名单漏一条的代价是推荐路径对全体用户静默死掉。"""
+        for name in ("lifeos-1.0.0.zip", "lifeos-1.2.0.zip", "lifeos-2.0.0-rc1.zip"):
+            with self.subTest(name=name):
+                self.assertTrue(boot.is_system_archive(name))
+        for name in (
+            "lifeos-install-skill-1.2.0.zip",
+            "lifeos-skill-1.2.0.zip",   # v1.2.0 发布当天击穿黑名单的那一个
+            "zzm-lifeos-full-1.2.0.zip",
+            "lifeos-docs-1.2.0.zip",
+            "lifeos-.zip",
+            "lifeos-1.2.0.zip.sha256",
+        ):
+            with self.subTest(name=name):
+                self.assertFalse(boot.is_system_archive(name))
+
+    def test_the_real_v1_2_0_asset_set_resolves_to_exactly_one_system_package(self) -> None:
+        """锁住线上真实附件集合：任何新增发布物都必须在这里先证明自己不制造歧义。"""
+        archive, checksum = boot.select_release_assets(_release(
+            "lifeos-1.2.0.zip", "lifeos-1.2.0.zip.sha256",
+            "lifeos-install-skill-1.2.0.zip", "lifeos-install-skill-1.2.0.zip.sha256",
+            "zzm-lifeos-full-1.2.0.zip", "zzm-lifeos-full-1.2.0.zip.sha256",
+            tag="v1.2.0",
+        ))
+        self.assertEqual(archive["name"], "lifeos-1.2.0.zip")
+        self.assertEqual(checksum["name"], "lifeos-1.2.0.zip.sha256")
+
 
 class ChecksumTests(unittest.TestCase):
     DIGEST = "a" * 64

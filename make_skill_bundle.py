@@ -283,7 +283,10 @@ def checksum(archive: Path) -> None:
 def build(limit_total: int, limit_file: int) -> list[Path]:
     version = read_version()
     tree = release_tree(version)
-    bundle_name = f"lifeos-skill-{version}"
+    # 发布物名字刻意不以 `lifeos-` 开头：安装器认「lifeos-<版本>.zip」为整套系统的包，
+    # 叫 lifeos-skill-<版本>.zip 会让它看见两个候选而按「有歧义不猜」整条拒绝——
+    # 而且歧义在 Release 的附件集合里，连已经发出去的旧 skill 一起失效（v1.2.0 实测）。
+    bundle_name = f"{SKILL_DIR_NAME}-{version}"
     out = ROOT / "dist" / bundle_name
     archive = ROOT / "dist" / f"{bundle_name}.zip"
     stage = out / SKILL_DIR_NAME
