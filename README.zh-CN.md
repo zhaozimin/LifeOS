@@ -76,9 +76,15 @@ AI 只负责判断**你想说什么**。凡是必须算对的——日期算术�
 - 想记账，但受不了每天打开 App 填表的人
 - 不愿意把作息和消费记录交给别人服务器的人
 
-## 安装：三条路，任选一条
+## 安装：四条路，任选一条
 
 完整步骤、每一步「你会看到什么」和「看不到该怎么办」，都写在 **[安装指南](docs/安装指南.md)** 里。这里只给入口。
+
+### 路径零（最省事）：一个 Skill 装完整套
+
+到 [Releases 页面](https://github.com/zhaozimin/LifeOS/releases/latest) 下载 `lifeos-skill-1.2.0.zip`，解压后把 `zzm-lifeos-full` 整个文件夹放进你的 Agent skills 目录（Claude Code 通常是 `~/.claude/skills/`），然后对它说一句「帮我装 LifeOS」。
+
+这个 Skill **自带全部源码**，安装全程不联网：它把包内的发布树逐文件校验 sha256 后还原到你的硬盘，再启动服务、装好开机自启。装完不用换工具——同一个 Skill 接着负责你日常的每一句「我花了 25 块打车」。
 
 ### 路径一（推荐）：让 AI 帮你装
 
@@ -88,7 +94,7 @@ AI 只负责判断**你想说什么**。凡是必须算对的——日期算术�
 请帮我在这台 Mac 上安装 LifeOS，严格按下面的步骤做，不要跳步、不要自己发挥：
 
 1. 打开 https://github.com/zhaozimin/LifeOS/releases/latest ，
-   下载名字形如 lifeos-install-skill-1.1.0.zip 的附件，以及它旁边同名的 .sha256 文件。
+   下载名字形如 lifeos-install-skill-1.2.0.zip 的附件，以及它旁边同名的 .sha256 文件。
 2. 用 shasum -a 256 -c 校验这个 zip。校验不通过就立刻停下来告诉我，不要继续。
 3. 解压，把里面的 zzm-lifeos-install 整个文件夹放进你自己的 skills 目录
    （Claude Code 通常是 ~/.claude/skills/，别的 Agent 用你自己的那个）。
@@ -104,7 +110,7 @@ AI 只负责判断**你想说什么**。凡是必须算对的——日期算术�
 
 ### 路径二：自己下载安装包
 
-到 [Releases 页面](https://github.com/zhaozimin/LifeOS/releases/latest) 下载 `lifeos-1.1.0.zip`，校验、解压，在终端里跑一条安装命令。全过程见 [安装指南](docs/安装指南.md) 路径二。
+到 [Releases 页面](https://github.com/zhaozimin/LifeOS/releases/latest) 下载 `lifeos-1.2.0.zip`，校验、解压，在终端里跑一条安装命令。全过程见 [安装指南](docs/安装指南.md) 路径二。
 
 ### 路径三：从源码装
 

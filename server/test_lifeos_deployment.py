@@ -704,7 +704,7 @@ class IsolatedDeploymentTests(unittest.TestCase):
         """
         limit = 800
         grandfathered = {
-            "skills/zzm-lifeos-install/scripts/lifeos_bootstrap.py": 899,
+            "skills/zzm-lifeos-install/scripts/lifeos_bootstrap.py": 817,
             "server/domains/finance/service.py": 872,
             "server/test_lifeos_deployment.py": 867,
         }

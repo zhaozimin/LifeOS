@@ -1,7 +1,8 @@
 """
 [INPUT]: 只依赖同目录的 lifeos_bootstrap 与标准库 unittest/tempfile；不发网络、不读真实家目录、不碰任何安装。
 [OUTPUT]: 对外提供引导安装金样：地址白名单、Release 附件挑选、校验和解析、压缩包顶层目录、
-          目标/指针裁定、原子升级回滚、宿主探测、skill 覆盖护栏、health 归属判据与 Token 掩码。
+          目标/指针裁定、原子升级回滚、宿主探测、skill 覆盖护栏、health 归属判据、Token 掩码，
+          以及随包 payload 的清单裁定、字节/权限还原、涂改拒绝与宿主排除。
 [POS]: skills/zzm-lifeos-install/scripts 的回归底座。锁的是那些「放行一次就无法挽回」的判据——
        校验和对不上、压缩包越界、损坏指针被当成缺失、升级失败混装新旧代码、把别人的 skill 覆盖掉——
        而不是命令行长什么样。网络与真实 LaunchAgent 副作用不在此文件覆盖范围内。
@@ -403,6 +404,85 @@ class AtomicDeploymentTests(unittest.TestCase):
         boot.commit_upgrade(self.target)
         boot.recover_interrupted_upgrade(self.target)
         self.assertEqual((self.target / "server/app.py").read_text(), "new")
+
+
+class PayloadTests(unittest.TestCase):
+    """随包 payload 是市场形态的唯一进料；清单校验必须与网络路径的 sha256 同等强硬。"""
+
+    def setUp(self) -> None:
+        self.stack = tempfile.TemporaryDirectory()
+        self.addCleanup(self.stack.cleanup)
+        self.payload = Path(self.stack.name) / "payload"
+        self.into = Path(self.stack.name) / "unpacked"
+        (self.payload / "tree" / "server").mkdir(parents=True)
+
+    def _write(self, source: str, data: bytes, *, encode: bool = False) -> dict:
+        import base64 as b64
+        import hashlib as h
+        target = self.payload / "tree" / source
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b64.encodebytes(data) if encode else data)
+        dest = source[: -len(".b64.txt")] if encode else (source[: -len(".txt")] if source.endswith(".sh.txt") else source)
+        return {"dest": dest, "source": source, "mode": "0755" if dest.endswith(".sh") else "0644", "sha256": h.sha256(data).hexdigest(), "bytes": len(data), "base64": encode}
+
+    def _manifest(self, files: list) -> dict:
+        manifest = {"schema": 1, "product": "LifeOS", "version": "9.9.9", "files": files}
+        (self.payload / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        return boot.read_payload_manifest(self.payload)
+
+    def test_materialize_restores_bytes_modes_and_the_single_top_level_root(self) -> None:
+        files = [
+            self._write("server/app.py", b"print('ok')\n"),
+            self._write("server/run.sh.txt", b"#!/bin/bash\necho hi\n"),
+            self._write("logo.png.b64.txt", bytes(range(256)), encode=True),
+        ]
+        root = boot.materialize_payload(self.payload, self._manifest(files), self.into)
+        self.assertEqual(root, self.into / "lifeos-9.9.9")
+        self.assertEqual((root / "server/app.py").read_bytes(), b"print('ok')\n")
+        self.assertEqual((root / "logo.png").read_bytes(), bytes(range(256)))
+        self.assertEqual((root / "server/run.sh").stat().st_mode & 0o777, 0o755, "0755 必须还原，否则 plist 指向的入口不可执行")
+        self.assertEqual((root / "server/app.py").stat().st_mode & 0o777, 0o644)
+
+    def test_a_tampered_member_stops_before_anything_reaches_the_target(self) -> None:
+        entry = self._write("server/app.py", b"print('ok')\n")
+        entry["sha256"] = "0" * 64
+        with self.assertRaisesRegex(boot.BootstrapError, "sha256"):
+            boot.materialize_payload(self.payload, self._manifest([entry]), self.into)
+
+    def test_traversal_and_absolute_destinations_are_refused_at_the_manifest_gate(self) -> None:
+        for dest in ("../escape.py", "/etc/passwd", "a/../../b.py"):
+            entry = self._write("server/app.py", b"x")
+            entry["dest"] = dest
+            with self.subTest(dest=dest), self.assertRaisesRegex(boot.BootstrapError, "越界"):
+                self._manifest([entry])
+
+    def test_a_missing_or_malformed_manifest_names_the_next_step(self) -> None:
+        with self.assertRaisesRegex(boot.BootstrapError, "清单"):
+            boot.read_payload_manifest(self.payload)
+        (self.payload / "manifest.json").write_text("{]", encoding="utf-8")
+        with self.assertRaisesRegex(boot.BootstrapError, "JSON"):
+            boot.read_payload_manifest(self.payload)
+        (self.payload / "manifest.json").write_text(json.dumps({"schema": 2, "version": "1", "files": [{}]}), encoding="utf-8")
+        with self.assertRaises(boot.BootstrapError):
+            boot.read_payload_manifest(self.payload)
+
+    def test_payload_and_version_flags_are_mutually_exclusive(self) -> None:
+        args = boot.build_parser().parse_args(["install", "--payload", str(self.payload), "--version", "v1.0.0"])
+        with self.assertRaisesRegex(boot.BootstrapError, "--payload 与 --version"):
+            boot.command_install(args)
+
+    def test_excluded_hosts_never_receive_the_recording_skill(self) -> None:
+        """市场形态把承载自己的宿主排除掉，否则同一句话挂两个触发面。"""
+        home = Path(self.stack.name) / "home"
+        claude = home / ".claude" / "skills"
+        codex = home / ".codex" / "skills"
+        claude.mkdir(parents=True)
+        codex.mkdir(parents=True)
+        hosts = boot.detect_hosts(home)
+        available = boot.available_hosts(hosts)
+        excluded = {claude.resolve()}
+        remaining = [item for item in available if item.expanduser().resolve() not in excluded]
+        self.assertEqual(remaining, [codex])
 
 
 if __name__ == "__main__":

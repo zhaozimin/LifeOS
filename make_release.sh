@@ -3,7 +3,9 @@
 # [OUTPUT]: 产出主包 dist/lifeos-<版本>/ 与 dist/lifeos-<版本>.zip，以及只含引导 Skill 的
 #           dist/lifeos-install-skill-<版本>.zip；两个包的解包目录与 ZIP 各扫一遍敏感文件名、家目录绝对路径、
 #           tailnet 私有主机名与凭证形态，主包另校验根 CLAUDE.md 与发布物同构，各出一份 `shasum -a 256 -c` 可直接吃的 .sha256。
-# [POS]: 公开发布边界；`--print-release-paths` 让 CI 的私货扫描与打包共用同一份白名单真源（该接口刻意不依赖 VERSION），
+# [POS]: 公开发布边界；`--inspect <目标> <顶层名> <full|skill>` 把同一套私货扫描借给 make_skill_bundle.py
+#        （规则分叉的那一次就是泄漏，所以市场包不许自带第二份判据），
+#        `--print-release-paths` 让 CI 的私货扫描与打包共用同一份白名单真源（该接口刻意不依赖 VERSION），
 #        根 VERSION 则是版本号的唯一供给——CI 附件、Release 资产与引导 Skill 的下载名全部由它推导，不再各自硬编码。
 #        打包走 Python 标准库而非 zip(1)：中文文件名必须带 UTF-8 标志位入包，且发布链不该依赖某个平台的 zip 实现。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -21,6 +23,10 @@ RELEASE_PATHS=(
   "CLAUDE.md"
   ".gitignore"
   "make_release.sh"
+  # 市场包构建器与其覆盖层随发布公开：根 CLAUDE.md 声明了它们，发布物的 GEB 自证就必须
+  # 找得到它们；公开仓库带着构建器，任何人都能从发布树复建市场 Skill 包。
+  "make_skill_bundle.py"
+  "packaging"
   "docs"
   "skills"
   "server/CLAUDE.md"
@@ -224,6 +230,18 @@ if failures:
     raise SystemExit(2)
 PY
 }
+
+# 私货扫描是发布链上唯一一道拦泄漏的闸；市场包（make_skill_bundle.py）必须过同一道闸而不是
+# 抄一份判据过去——两处规则一旦分叉，分叉的那一次就是泄漏。这个出口只把扫描借出去，
+# 不参与打包，因此刻意排在 Git 干净树检查之前：调用方通常还没提交。
+if [ "${1:-}" = "--inspect" ]; then
+  if [ "$#" -ne 4 ]; then
+    printf '%s\n' '用法：make_release.sh --inspect <目录或ZIP> <顶层目录名> <full|skill>' >&2
+    exit 2
+  fi
+  inspect_release "$2" "$3" "$4"
+  exit 0
+fi
 
 pack_archive() {
   # 不用 zip(1)：Info-ZIP 不给非 ASCII 文件名置 UTF-8 标志位（bit 11），Apple 的 zip 又不认 `-UN=UTF8`。

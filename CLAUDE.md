@@ -6,11 +6,13 @@ Python 3.9+ 标准库多模块服务 + 两本 SQLite WAL 账本 + React 19/TypeS
 server/ - 单进程 HTTP 服务、双账本领域包、部署脚本、测试与预构建仪表盘（4 子目录：core、domains、runtime、web-dashboard）
 skills/ - LifeOS 的 Agent 接入层：zzm-lifeos 路由时间/财务/部署意图，zzm-lifeos-install 从 GitHub Release 引导安装（2 子目录：zzm-lifeos、zzm-lifeos-install）
 docs/ - 面向普通用户的安装、备份恢复与已知问题；随发布 ZIP 交付，是用户手上唯一的中文手册
+packaging/ - 第四条分发路径（Skill 市场自足包）的覆盖层；刻意不入 RELEASE_PATHS，构建输入不是发布物成员（1 子目录：market-skill）
 </directory>
 
 <config>
 VERSION - 发布版本真源；发布物命名、校验和与引导 skill 的版本判据都取自这里
-make_release.sh - 公开发布边界；按根 VERSION 打主包与引导 skill 小包，解包目录与 ZIP 各扫一遍私货后出 sha256
+make_release.sh - 公开发布边界；按根 VERSION 打主包与引导 skill 小包，解包目录与 ZIP 各扫一遍私货后出 sha256；--inspect 把同一套扫描借给市场包构建
+make_skill_bundle.py - 市场包构建边界；把已扫描的发布树做可逆扩展名归一化塞进单个 Skill（payload + manifest），出包前自证还原逐字节相同并复扫私货
 .gitignore - 排除双账本、附件、Token、连接信息（含两者原子写入的 `.<name>.<pid>.tmp` 中间态）与 LaunchAgent 运行日志；`server/web/` 是随源码提交的面板发布物
 README.md - 产品定位、隐私边界、三条安装路径入口与已知问题索引
 LICENSE - MIT；随发布物与公开仓库一同交付

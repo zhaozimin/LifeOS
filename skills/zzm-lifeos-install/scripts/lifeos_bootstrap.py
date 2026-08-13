@@ -1,17 +1,18 @@
 """
-[INPUT]: 依赖 GitHub Release API（api.github.com）、发布物内的 server 安装/自启/卸载脚本，
-         以及本机 `~/.config/lifeos/install.json` 指针；只用 Python 3.9+ 标准库，零第三方依赖。
+[INPUT]: 依赖 lifeos_source 的发布树来源层（GitHub 下载或随包 payload）、lifeos_deploy 的原子事务、
+         发布物内的 server 安装/自启/卸载脚本，以及本机 `~/.config/lifeos/install.json` 指针；
+         只用 Python 3.9+ 标准库，零第三方依赖。
 [OUTPUT]: 对外提供 detect/install/status/uninstall 四个子命令，以及 Secret、资产挑选、校验和解析、
-          压缩包顶层目录、指针/安装目标裁定、宿主探测、原子升级编排与 health 回滚。
-[POS]: lifeos-install 的唯一实现。SKILL.md 只做意图判断，一切正确性——域白名单、sha256、目标占用、
-       双 dbPath 归属、Token 不外泄——都在此裁定；它不 import lifeos skill 的任何脚本，
-       因为引导阶段那套脚本还没落到本机。
+          指针/安装目标裁定、宿主探测、原子升级编排与 health 回滚；并 re-export 来源层全部判据，
+          调用方与金样只认本门面。
+[POS]: lifeos-install 的安装编排层。SKILL.md 只做意图判断，正确性三层分工：来源与验证归 lifeos_source，
+       文件系统事务归 lifeos_deploy，编排与放行判据（目标占用、双 dbPath 归属、Token 不外泄）归本文件；
+       它不 import lifeos skill 的任何脚本，因为引导阶段那套脚本还没落到本机。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
 
 from __future__ import annotations
 import argparse
-import hashlib
 import json
 import os
 import shutil
@@ -23,25 +24,30 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Sequence
 from lifeos_deploy import commit_upgrade, deploy, quiesce_upgrade, recover_interrupted_upgrade, restore_previous_upgrade, rollback_upgrade
+# 发布树的来源与验证整层下沉到 lifeos_source；这里 re-export 是刻意的——
+# 调用方与金样只认 bootstrap 一个门面，来源层换血不该牵动它们。
+from lifeos_source import (  # noqa: F401
+    ALLOWED_HOSTS,
+    HEX_DIGITS,
+    BootstrapError,
+    _download,
+    _download_text,
+    _extract,
+    archive_root,
+    assert_allowed_url,
+    digest_of,
+    materialize_payload,
+    read_payload_manifest,
+    _open,
+)
 
 
 REPOSITORY = "zhaozimin/LifeOS"
 API_ROOT = "https://api.github.com"
 RELEASES_PAGE = f"https://github.com/{REPOSITORY}/releases"
-# 只认这几个域，除此之外的任何跳转都按劫持处理直接拒绝——「先跟过去再校验 sha256」
-# 不成立，因为校验和也是同一次会话给的。Release 附件的 302 实测落在
-# release-assets.githubusercontent.com（2026-08 对 v1.0.0 真实下载验证），
-# objects.githubusercontent.com 是它的前代资产域，保留以兼容 GitHub 的灰度回切。
-ALLOWED_HOSTS = (
-    "api.github.com",
-    "github.com",
-    "release-assets.githubusercontent.com",
-    "objects.githubusercontent.com",
-)
 DEFAULT_INSTALL_PATH = Path("~/Library/Application Support/LifeOS/app")
 DEFAULT_PORT = 59418
 POINTER_RELATIVE = Path(".config/lifeos/install.json")
@@ -76,19 +82,6 @@ REQUIRED_MEMBERS = (
     "server/uninstall_lifeos.sh",
     f"skills/{SKILL_DIR_NAME}/SKILL.md",
 )
-HEX_DIGITS = set("0123456789abcdef")
-
-class BootstrapError(RuntimeError):
-    """一切可预期失败都走这里：message 说清发生了什么，advice 说清用户下一步做什么。
-
-    不带 advice 的失败等于把用户丢在原地，所以调用处应尽量给出下一步。
-    """
-
-    def __init__(self, message: str, advice: str = "") -> None:
-        super().__init__(message)
-        self.advice = advice
-
-
 class Secret:
     """访问密钥只以此形态在进程内流转：str() 与 repr() 恒为掩码。
 
@@ -122,32 +115,7 @@ def say(message: str) -> None:
     print(f"· {message}")
 
 
-# ── GitHub 侧：地址白名单、Release 解析、校验和 ────────────────────────────────
-
-def assert_allowed_url(url: str) -> str:
-    parsed = urllib.parse.urlsplit(url)
-    if parsed.scheme != "https" or parsed.hostname not in ALLOWED_HOSTS:
-        raise BootstrapError(
-            f"拒绝访问非 GitHub 官方地址：{url}",
-            "只允许 " + "、".join(ALLOWED_HOSTS) + "。如果发布地址真的变了，请先人工核实，再改脚本里的 ALLOWED_HOSTS。",
-        )
-    return url
-
-
-class _GuardedRedirect(urllib.request.HTTPRedirectHandler):
-    """跟随重定向前先过白名单：附件下载必须跳一次，但只能跳到官方对象存储。"""
-
-    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> Any:
-        assert_allowed_url(newurl)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
-def _open(url: str, *, timeout: float = 30.0) -> Any:
-    # 关掉代理：代理能把 ZIP 和它的 sha256 一起换掉，而 https 直连至少让证书说话。
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _GuardedRedirect())
-    request = urllib.request.Request(assert_allowed_url(url), headers={"Accept": "application/vnd.github+json", "User-Agent": "lifeos-install"})
-    return opener.open(request, timeout=timeout)
-
+# ── GitHub 侧：Release 解析与校验和 ──────────────────────────────────────────
 
 def release_endpoint(version: "str | None") -> str:
     if version:
@@ -251,42 +219,7 @@ def parse_sha256_document(text: str, filename: str) -> str:
     )
 
 
-def digest_of(path: Path) -> str:
-    hasher = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            hasher.update(block)
-    return hasher.hexdigest()
-
-
-# ── 压缩包与安装目标 ──────────────────────────────────────────────────────────
-
-def archive_root(names: Iterable) -> str:
-    """取出压缩包唯一的顶层目录名；顺带挡掉 zip slip 与散落顶层文件。
-
-    目录名里带版本号，硬编码就等于每发一版都要改脚本，所以这里只认「唯一」这个结构事实。
-    """
-    roots, stray = set(), []
-    for name in names:
-        pure = PurePosixPath(name)
-        if pure.is_absolute() or ".." in pure.parts:
-            raise BootstrapError(f"压缩包里有越界成员：{name}", "这不是 LifeOS 的正常发布物，已中止解压；请重新下载或换一个版本。")
-        parts = [part for part in pure.parts if part not in ("", ".")]
-        if not parts:
-            continue
-        roots.add(parts[0])
-        if len(parts) == 1 and not name.endswith("/"):
-            stray.append(name)
-    if stray:
-        raise BootstrapError(
-            f"压缩包顶层散落着文件：{'、'.join(sorted(stray)[:3])}",
-            "LifeOS 发布物应当只有一个顶层目录；请确认下载的是 lifeos-<版本>.zip 而不是别的包。",
-        )
-    if len(roots) != 1:
-        found = "、".join(sorted(roots)) or "（空包）"
-        raise BootstrapError(f"压缩包的顶层目录不唯一：{found}", "请重新下载；文件可能在传输中被截断或拼接了。")
-    return roots.pop()
-
+# ── 安装目标 ──────────────────────────────────────────────────────────────────
 
 def assert_release_layout(source: Path) -> None:
     missing = [member for member in REQUIRED_MEMBERS if not (source / member).exists()]
@@ -592,6 +525,8 @@ def command_detect(args: argparse.Namespace) -> int:
 
 def command_install(args: argparse.Namespace) -> int:
     home = Path.home()
+    if args.payload and args.version:
+        raise BootstrapError("--payload 与 --version 不能同时给。", "随包 payload 只有一版；要装别的版本请去掉 --payload 走 GitHub Release。")
     target = Path(args.install_path).expanduser() if args.install_path else DEFAULT_INSTALL_PATH.expanduser()
     recover_interrupted_upgrade(target)
     verdict = install_target_verdict(target, args.upgrade)
@@ -607,20 +542,32 @@ def command_install(args: argparse.Namespace) -> int:
     )
     say(f"安装目标：{target}（{'全新安装' if verdict == 'fresh' else '就地升级，保留现有账本与访问密钥'}）")
 
-    archive, checksum = select_release_assets(fetch_release(args.version))
-    say(f"发布版本 {archive['tag']}，安装包 {archive['name']}")
+    # 发布树的两种来源在这里分叉，且只在这里分叉：网络那条要下载、校验、解压，
+    # 随包那条要还原、校验；到了 assert_release_layout 就重新合流，下游一行都不知道
+    # 自己拿到的树是从哪来的。这是「同一套安装编排服务两条分发路径」的唯一支点。
+    payload = Path(args.payload).expanduser() if args.payload else None
+    manifest = read_payload_manifest(payload) if payload else None
+    if manifest is None:
+        archive, checksum = select_release_assets(fetch_release(args.version))
+        say(f"发布版本 {archive['tag']}，安装包 {archive['name']}")
+    else:
+        say(f"离线安装：使用随包携带的 LifeOS {manifest['version']}（{len(manifest['files'])} 个成员），全程不出网")
     staging = Path(tempfile.mkdtemp(prefix="lifeos-bootstrap-"))
     try:
-        package = staging / archive["name"]
-        _download(archive["url"], package)
-        expected = parse_sha256_document(_download_text(checksum["url"]), archive["name"])
-        if digest_of(package) != expected:
-            raise BootstrapError(
-                "下载到的安装包 sha256 与发布方公布的不一致，已中止安装。",
-                "什么都没有被写进你的电脑。换个网络重试；反复不一致请立刻停手并报告给 LifeOS 项目。",
-            )
-        say("sha256 校验通过")
-        source = _extract(package, staging / "unpacked")
+        if manifest is None:
+            package = staging / archive["name"]
+            _download(archive["url"], package)
+            expected = parse_sha256_document(_download_text(checksum["url"]), archive["name"])
+            if digest_of(package) != expected:
+                raise BootstrapError(
+                    "下载到的安装包 sha256 与发布方公布的不一致，已中止安装。",
+                    "什么都没有被写进你的电脑。换个网络重试；反复不一致请立刻停手并报告给 LifeOS 项目。",
+                )
+            say("sha256 校验通过")
+            source = _extract(package, staging / "unpacked")
+        else:
+            source = materialize_payload(payload, manifest, staging / "unpacked")
+            say(f"随包 payload 逐文件 sha256 校验通过（{len(manifest['files'])} 个成员）")
         assert_release_layout(source)
         if verdict == "upgrade":
             quiesce_upgrade(target, install_port, port_is_occupied=port_is_occupied, run_step=run_step)
@@ -681,7 +628,14 @@ def command_install(args: argparse.Namespace) -> int:
     hosts = detect_hosts(home)
     installed_hosts, warnings = [], []
     skill_source = target / "skills" / SKILL_DIR_NAME
-    targets = available_hosts(hosts) + [Path(extra).expanduser() for extra in args.skill_host or []]
+    # 市场形态的调用方会把承载自己的宿主排除掉：那个宿主里已经有一份带完整记录协议的
+    # 市场 Skill，再注入 zzm-lifeos 等于同一句「我花了25块」挂两个触发面。
+    excluded = {Path(item).expanduser().resolve() for item in args.exclude_host or []}
+    targets = [
+        host_dir
+        for host_dir in available_hosts(hosts) + [Path(extra).expanduser() for extra in args.skill_host or []]
+        if host_dir.expanduser().resolve() not in excluded
+    ]
     for host_dir in targets:
         # 一个宿主装不上不该连累其余宿主，更不该连累已经装好的服务：逐个降级成提醒。
         try:
@@ -801,43 +755,6 @@ def command_uninstall(args: argparse.Namespace) -> int:
     return 0
 
 
-# ── 下载与解压（副作用集中在这几行，便于纯函数部分独立回归） ──────────────────
-
-def _download(url: str, target: Path) -> None:
-    try:
-        with _open(url, timeout=180.0) as response, target.open("wb") as handle:
-            shutil.copyfileobj(response, handle)
-    except (OSError, urllib.error.URLError):
-        raise BootstrapError("安装包下载失败。", "检查网络后重跑同一条命令；已下载的内容在临时目录里，会被自动清掉。") from None
-
-
-def _download_text(url: str) -> str:
-    try:
-        with _open(url, timeout=60.0) as response:
-            return response.read().decode("utf-8", errors="replace")
-    except (OSError, urllib.error.URLError):
-        raise BootstrapError("校验和文件下载失败。", "检查网络后重跑同一条命令。") from None
-
-
-def _extract(package: Path, into: Path) -> Path:
-    try:
-        with zipfile.ZipFile(package) as bundle:
-            root = archive_root(bundle.namelist())
-            bundle.extractall(into)
-            # zipfile.extractall 丢弃 Unix 权限位：ZIP 里 0755 的部署脚本解出来是 0644。
-            # 用 unzip(1) 或访达解包的人拿到的是可执行文件，走引导安装的人拿到的不是——
-            # 同一份发布物在两条路径上行为不同，而差异只在「直接执行脚本」那一刻才暴露。
-            for info in bundle.infolist():
-                mode = (info.external_attr >> 16) & 0o7777
-                if mode and not info.is_dir():
-                    (into / info.filename).chmod(mode)
-    except zipfile.BadZipFile:
-        raise BootstrapError("下载到的文件不是有效的 ZIP。", "多半是下载被中途截断；重跑同一条命令。") from None
-    except OSError as exc:
-        raise BootstrapError(f"解压失败：{exc}", "检查磁盘剩余空间与目录权限后重试。") from None
-    return into / root
-
-
 def _dependency_present() -> bool:
     code, _ = run_step([shutil.which("python3") or sys.executable, "-c", "import openpyxl"], Path.home())
     return code == 0
@@ -856,11 +773,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     install = sub.add_parser("install", help="下载、校验、部署并自检")
     install.add_argument("--version", help="指定 Release 标签；不给就装最新版")
+    install.add_argument("--payload", help="随包 payload 目录：跳过 GitHub 下载，从本地清单还原发布树离线安装")
     install.add_argument("--install-path", help=f"安装目录，默认 {DEFAULT_INSTALL_PATH}")
     install.add_argument("--port", type=int, help="监听端口，默认 59418")
     install.add_argument("--upgrade", action="store_true", help="目标已是 LifeOS 时就地升级，保留账本")
     install.add_argument("--replace-pointer", action="store_true", help="全局指针指向别的安装时，改指本次安装")
     install.add_argument("--skill-host", action="append", help="额外的 skill 安装目录，可重复")
+    install.add_argument("--exclude-host", action="append", help="跳过的 skill 宿主目录，可重复；市场形态用它避免与自身重复触发")
     install.set_defaults(handler=command_install)
 
     status = sub.add_parser("status", help="只读体检：装在哪、在不在跑、双账本在哪")
